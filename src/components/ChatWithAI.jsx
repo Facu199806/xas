@@ -10,7 +10,7 @@ export default function ChatWithAI() {
     setLoading(true);
     setResponse('');
     try {
-      const res = await fetch('http://localhost:8080/v1/chat/completions', {
+      const res = await fetch('http://localhost:1337/v1/chat/completions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
