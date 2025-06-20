@@ -1,0 +1,4 @@
+/* Basic App styles */
+.app {
+  @apply p-4 bg-white dark:bg-gray-900 text-black dark:text-white;
+}

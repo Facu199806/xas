@@ -1,0 +1,16 @@
+{
+  "name": "XAS Project",
+  "short_name": "XAS",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "description": "XAS PWA React App",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "type": "image/svg+xml",
+      "sizes": "512x512"
+    }
+  ],
+  "theme_color": "#646cff"
+}
