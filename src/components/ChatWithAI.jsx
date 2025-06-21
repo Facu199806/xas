@@ -10,11 +10,12 @@ export default function ChatWithAI() {
     setLoading(true);
     setResponse('');
     try {
-      const res = await fetch('http://localhost:1337/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
-      });
+      const res = await fetch('http://localhost:1337/backend-api/v2/conversation', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ messages: [{ role: 'user', content: prompt }] }),
+});
+
       const data = await res.json();
       setResponse(data.choices?.[0]?.message?.content ?? 'Sin respuesta');
     } catch (e) {
