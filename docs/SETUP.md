@@ -5,8 +5,17 @@
 1. Instalá Node.js 18 o superior.
 2. Ejecutá `npm install`.
 3. Copiá `.env.example` como `.env`.
-4. Ejecutá `npm run dev`.
+4. Para desarrollo, ejecutá `npm run dev`.
 5. Abrí la URL que muestre Vite, normalmente `http://localhost:5173`.
+
+Para probar la compilación de producción:
+
+```bash
+npm run build
+npm run preview
+```
+
+La vista previa suele quedar en `http://localhost:4173`. Tanto `dev` como `preview` redirigen las solicitudes `/api` al motor configurado en `VITE_AI_PROXY_TARGET`.
 
 ## 2. Motor local con Ollama
 
@@ -37,7 +46,7 @@ VITE_AI_REASONING_EFFORT=medium
 VITE_AI_TEMPERATURE=0.2
 ```
 
-Si ya existía un `.env` anterior apuntando al puerto `1337`, reemplazalo por estos valores y reiniciá `npm run dev`.
+Si ya existía un `.env` anterior apuntando al puerto `1337`, reemplazalo por estos valores y reiniciá `npm run dev` o `npm run preview`.
 
 ## Validación mínima
 
@@ -48,3 +57,4 @@ Si ya existía un `.env` anterior apuntando al puerto `1337`, reemplazalo por es
 - Una API apagada debe mostrar un error explicativo.
 - Una respuesta válida debe aparecer como mensaje del asistente.
 - `npm run build` debe finalizar sin errores antes de publicar.
+- `npm run preview` debe conservar la conexión con Ollama.
