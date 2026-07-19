@@ -188,8 +188,12 @@ export default function Chat() {
       setMessages((current) => [...current, { role: 'assistant', content }])
       setConnection({ status: 'online', message: 'Ollama conectado' })
     } catch (requestError) {
-      const requestMessage = requestError instanceof Error ? requestError.message : 'No se pudo contactar con la IA.'
-      const aborted = requestError instanceof DOMException && requestError.name === 'AbortError'
+      const requestMessage = requestError instanceof Error
+        ? requestError.message
+        : typeof requestError === 'string'
+          ? requestError
+          : 'No se pudo contactar con la IA.'
+      const aborted = controller.signal.aborted
       const timedOut = aborted && controller.signal.reason === 'timeout'
       const manuallyCancelled = aborted && controller.signal.reason === 'manual'
       const networkFailure = /failed to fetch|network|econnrefused|no se pudo conectar con ollama/i.test(requestMessage)
