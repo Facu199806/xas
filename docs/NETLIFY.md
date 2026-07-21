@@ -8,18 +8,7 @@ Esta versión permite usar XAS sin dejar una PC encendida:
 - El historial y el código de acceso se guardan sólo en el navegador del dispositivo.
 - En `localhost`, XAS conserva el modo local con Ollama.
 
-## 1. Fusionar la rama
-
-Fusioná la pull request de `deploy-netlify-mobile` hacia `main`.
-
-En la PC, actualizá después con:
-
-```bash
-git switch main
-git pull --ff-only origin main
-```
-
-## 2. Crear el sitio
+## 1. Crear el sitio
 
 1. Iniciá sesión en Netlify.
 2. Elegí **Add new project**.
@@ -30,22 +19,57 @@ git pull --ff-only origin main
    - Build command: `npm run build`
    - Publish directory: `dist`
    - Functions directory: `netlify/functions`
-7. Hacé el primer deploy de producción.
+7. Hacé un deploy de producción.
 
 El archivo `netlify.toml` ya contiene esa configuración.
 
-## 3. Activar AI Gateway
+## 2. Requisitos de AI Gateway
 
-AI Gateway requiere un plan de créditos actual, incluido Free, y al menos un deploy de producción.
+AI Gateway requiere:
 
-En la configuración del equipo o proyecto verificá que las funciones de IA estén habilitadas. La función usa automáticamente:
+- un plan de Netlify basado en créditos, incluido el plan Free actual;
+- al menos un deploy de producción;
+- las funciones de IA habilitadas para el equipo;
+- créditos disponibles.
+
+### Verificar el plan
+
+Desde el panel del equipo:
+
+1. Abrí **Usage & billing**.
+2. Entrá en **Plan details** o **Billing details**.
+3. Comprobá que el plan indique que está basado en créditos.
+
+Las cuentas antiguas pueden conservar un plan Legacy. AI Gateway no está disponible en planes Legacy. El cambio a un plan basado en créditos es irreversible, por lo que conviene revisar las condiciones antes de confirmarlo.
+
+### Verificar las funciones de IA
+
+Como Team Owner:
+
+1. Volvé al panel general del equipo.
+2. Entrá en **Team settings**.
+3. Abrí **AI enablement**.
+4. Seleccioná **Configure** y habilitá las funciones de IA.
+
+## 3. Credenciales automáticas
+
+Netlify inyecta automáticamente variables para AI Gateway dentro de la Function.
+
+XAS acepta primero:
 
 - `OPENAI_API_KEY`
 - `OPENAI_BASE_URL`
 
-Netlify las inyecta para AI Gateway. No deben guardarse claves dentro del repositorio ni en variables `VITE_*`.
+Y, como alternativa explícita:
 
-## 4. Variables opcionales
+- `NETLIFY_AI_GATEWAY_KEY`
+- `NETLIFY_AI_GATEWAY_BASE_URL`
+
+No copies estas variables desde otro sitio ni inventes valores manuales. Si existe sólo una variable `OPENAI_API_KEY` o `OPENAI_BASE_URL` configurada por vos, Netlify no completa automáticamente el par y la conexión puede quedar incompleta. En ese caso, eliminá las variables manuales y hacé un nuevo deploy.
+
+Nunca guardes claves privadas en GitHub ni en variables cuyo nombre comience con `VITE_`, porque esas variables llegan al navegador.
+
+## 4. Variables opcionales de XAS
 
 En **Project configuration > Environment variables** podés agregar:
 
@@ -61,42 +85,62 @@ XAS_ACCESS_TOKEN=un-codigo-largo-y-privado
 
 Si definís `XAS_ACCESS_TOKEN`, ingresá el mismo valor en el campo **Código de acceso** dentro de XAS. El código se guarda localmente en ese navegador.
 
-Después de agregar o cambiar variables, ejecutá un nuevo deploy.
+Después de agregar o cambiar variables, ejecutá un nuevo deploy de producción.
 
-## 5. Validación
+## 5. Diagnóstico
 
-Abrí la URL de Netlify y comprobá:
-
-1. El encabezado del chat muestra `Modo nube`.
-2. El indicador muestra `Nube conectada`.
-3. `Hola` recibe una respuesta breve.
-4. Un error como `ORA-01722` activa razonamiento técnico.
-5. El tema claro/oscuro cambia y persiste.
-6. Al recargar, el historial continúa en el mismo dispositivo.
-
-También podés comprobar el backend abriendo:
+Abrí:
 
 ```text
 https://TU-SITIO.netlify.app/api/chat
 ```
 
-Debe devolver un JSON con `ok: true`.
+Con AI Gateway disponible debe responder con:
 
-## 6. Instalar en Android
+```json
+{
+  "ok": true,
+  "provider": "Netlify AI Gateway",
+  "credentialSource": "openai"
+}
+```
+
+También puede mostrar `credentialSource: "netlify"` cuando utiliza las variables universales del gateway.
+
+Si devuelve `ok: false`, el objeto `diagnostics` sólo muestra si cada variable existe mediante valores `true` o `false`. No expone las claves.
+
+Interpretación habitual:
+
+- Todas en `false`: plan Legacy, AI Features deshabilitadas o deploy sin AI Gateway.
+- Sólo una variable OpenAI en `true`: configuración manual incompleta en Environment variables.
+- Variables Netlify en `true`: el fallback explícito debería permitir la conexión.
+
+## 6. Validación de XAS
+
+Abrí la URL de Netlify y comprobá:
+
+1. El encabezado muestra `Modo nube`.
+2. El indicador muestra `Nube conectada` sólo cuando el gateway está realmente disponible.
+3. `Hola` recibe una respuesta breve.
+4. Un error como `ORA-01722` activa razonamiento técnico.
+5. El tema claro/oscuro cambia y persiste.
+6. Al recargar, el historial continúa en el mismo dispositivo.
+
+## 7. Instalar en Android
 
 1. Abrí el sitio con Chrome.
 2. Tocá el menú de tres puntos.
 3. Elegí **Instalar aplicación** o **Agregar a la pantalla principal**.
 4. Abrí XAS desde el nuevo ícono.
 
-## 7. Instalar en iPhone o iPad
+## 8. Instalar en iPhone o iPad
 
 1. Abrí el sitio con Safari.
 2. Tocá **Compartir**.
 3. Elegí **Agregar a inicio**.
 4. Confirmá el nombre XAS.
 
-## 8. Funcionamiento local
+## 9. Funcionamiento local
 
 Para seguir usando Ollama en la PC:
 
@@ -110,7 +154,7 @@ El `.env.example` fija `VITE_AI_MODE=local`. En un dominio publicado, si esa var
 
 ## Seguridad y límites
 
-- No publiques `OPENAI_API_KEY`, `XAS_ACCESS_TOKEN` ni otras claves en GitHub.
+- No publiques claves privadas ni `XAS_ACCESS_TOKEN` en GitHub.
 - La función limita tamaño de mensajes, historial y frecuencia de solicitudes.
 - El código de acceso es recomendable si la URL no debe ser usada por terceros.
 - Revisá periódicamente el consumo de créditos en Netlify.

@@ -95,9 +95,18 @@ export default function Chat() {
     try {
       if (IS_CLOUD) {
         const response = await fetch(API_URL, { headers: { Accept: 'application/json' } })
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        const data = await response.json()
-        setConnection({ status: 'online', message: data?.provider ? 'Nube conectada' : 'Backend conectado' })
+        const rawText = await response.text()
+        const data = rawText ? JSON.parse(rawText) : {}
+
+        if (!response.ok || data?.ok !== true) {
+          const message = data?.message || data?.error?.message || `Gateway no disponible (HTTP ${response.status}).`
+          setConnection({ status: 'missing', message: 'Gateway sin configurar' })
+          setError(message)
+          return false
+        }
+
+        setError('')
+        setConnection({ status: 'online', message: 'Nube conectada' })
         return true
       }
 
@@ -114,11 +123,13 @@ export default function Chat() {
           : { status: 'missing', message: `Falta descargar ${LOCAL_MODEL}` },
       )
       return modelInstalled
-    } catch {
+    } catch (connectionError) {
+      const message = connectionError instanceof Error ? connectionError.message : 'No se pudo comprobar la conexión.'
       setConnection({
         status: 'offline',
         message: IS_CLOUD ? 'Backend desconectado' : 'Ollama desconectado',
       })
+      if (IS_CLOUD) setError(message)
       return false
     }
   }
@@ -221,6 +232,7 @@ export default function Chat() {
       const timedOut = aborted && controller.signal.reason === 'timeout'
       const manuallyCancelled = aborted && controller.signal.reason === 'manual'
       const networkFailure = /failed to fetch|network|econnrefused|no se pudo conectar/i.test(requestMessage)
+      const gatewayFailure = /AI Gateway|plan basado en créditos|AI Features|OPENAI_API_KEY|OPENAI_BASE_URL/i.test(requestMessage)
 
       if (timedOut) {
         setError(`La respuesta superó ${Math.round(REQUEST_TIMEOUT_MS / 1000)} segundos. Probá nuevamente con una consulta más corta.`)
@@ -229,6 +241,9 @@ export default function Chat() {
       } else if (networkFailure) {
         setError(IS_CLOUD ? 'No se pudo contactar con el backend de Netlify.' : `Ollama no está disponible. Ejecutá: ollama run ${LOCAL_MODEL}`)
         setConnection({ status: 'offline', message: IS_CLOUD ? 'Backend desconectado' : 'Ollama desconectado' })
+      } else if (IS_CLOUD && gatewayFailure) {
+        setError(requestMessage)
+        setConnection({ status: 'missing', message: 'Gateway sin configurar' })
       } else {
         setError(requestMessage)
       }
