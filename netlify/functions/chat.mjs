@@ -39,9 +39,54 @@ function sanitizeMessages(input) {
   return messages
 }
 
+function resolveGateway() {
+  const openAiBaseUrl = process.env.OPENAI_BASE_URL?.trim()
+  const openAiApiKey = process.env.OPENAI_API_KEY?.trim()
+  if (openAiBaseUrl && openAiApiKey) {
+    return { baseUrl: openAiBaseUrl, apiKey: openAiApiKey, source: 'openai' }
+  }
+
+  const gatewayBaseUrl = process.env.NETLIFY_AI_GATEWAY_BASE_URL?.trim()
+  const gatewayKey = process.env.NETLIFY_AI_GATEWAY_KEY?.trim()
+  if (gatewayBaseUrl && gatewayKey) {
+    return { baseUrl: gatewayBaseUrl, apiKey: gatewayKey, source: 'netlify' }
+  }
+
+  return null
+}
+
+function chatCompletionsUrl(baseUrl) {
+  const normalized = baseUrl.replace(/\/+$/, '')
+  return /\/v1$/i.test(normalized)
+    ? `${normalized}/chat/completions`
+    : `${normalized}/v1/chat/completions`
+}
+
+function gatewayDiagnostics() {
+  return {
+    openaiBaseUrl: Boolean(process.env.OPENAI_BASE_URL),
+    openaiApiKey: Boolean(process.env.OPENAI_API_KEY),
+    netlifyGatewayBaseUrl: Boolean(process.env.NETLIFY_AI_GATEWAY_BASE_URL),
+    netlifyGatewayKey: Boolean(process.env.NETLIFY_AI_GATEWAY_KEY),
+  }
+}
+
+function gatewayUnavailableMessage() {
+  return 'AI Gateway no está disponible para esta Function. Verificá que el equipo use un plan basado en créditos, que Netlify AI Features esté habilitado y que no haya variables OPENAI_API_KEY u OPENAI_BASE_URL creadas manualmente de forma incompleta.'
+}
+
 export default async function handler(request) {
+  const gateway = resolveGateway()
+
   if (request.method === 'GET') {
-    return json({ ok: true, provider: 'Netlify AI Gateway', model: DEFAULT_MODEL })
+    return json({
+      ok: Boolean(gateway),
+      provider: 'Netlify AI Gateway',
+      model: DEFAULT_MODEL,
+      credentialSource: gateway?.source || null,
+      diagnostics: gatewayDiagnostics(),
+      message: gateway ? 'AI Gateway disponible.' : gatewayUnavailableMessage(),
+    }, gateway ? 200 : 503)
   }
 
   if (request.method !== 'POST') {
@@ -52,12 +97,11 @@ export default async function handler(request) {
     return json({ error: { message: 'Código de acceso incorrecto o ausente.' } }, 401)
   }
 
-  const baseUrl = process.env.OPENAI_BASE_URL
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!baseUrl || !apiKey) {
+  if (!gateway) {
     return json({
       error: {
-        message: 'AI Gateway todavía no está activo. Hacé al menos un deploy de producción y verificá que las funciones de IA estén habilitadas en Netlify.',
+        message: gatewayUnavailableMessage(),
+        diagnostics: gatewayDiagnostics(),
       },
     }, 503)
   }
@@ -76,10 +120,10 @@ export default async function handler(request) {
       ? body.reasoning_effort
       : 'low'
 
-    const upstream = await fetch(`${baseUrl.replace(/\/$/, '')}/v1/chat/completions`, {
+    const upstream = await fetch(chatCompletionsUrl(gateway.baseUrl), {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        Authorization: `Bearer ${gateway.apiKey}`,
         'Content-Type': 'application/json',
       },
       signal: AbortSignal.timeout(55000),
@@ -112,6 +156,7 @@ export default async function handler(request) {
       choices: [{ message: { role: 'assistant', content } }],
       model: data.model || DEFAULT_MODEL,
       usage: data.usage || null,
+      credentialSource: gateway.source,
     })
   } catch (error) {
     const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError'
