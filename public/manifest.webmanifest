@@ -1,6 +1,6 @@
 {
-  "name": "XAS - Asistente de soporte",
-  "short_name": "XAS",
+  "name": "NOXAS - Asistente técnico",
+  "short_name": "NOXAS",
   "description": "Asistente para análisis de tickets, errores, Oracle EBS, Siebel y SQL.",
   "start_url": "/",
   "display": "standalone",
