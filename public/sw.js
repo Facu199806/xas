@@ -1,4 +1,4 @@
-const CACHE_NAME = 'xas-shell-v1'
+const CACHE_NAME = 'noxas-shell-v2'
 const APP_SHELL = ['/', '/manifest.webmanifest', '/xas-icon.svg']
 
 self.addEventListener('install', (event) => {

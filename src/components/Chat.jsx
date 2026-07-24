@@ -19,13 +19,13 @@ const MAX_TOKENS = Number(import.meta.env.VITE_AI_MAX_TOKENS ?? 1024)
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_AI_TIMEOUT_MS ?? 120000)
 const MAX_CONTEXT_MESSAGES = 18
 
-const SYSTEM_PROMPT = `Tu nombre es XAS. Sos un asistente especializado en soporte técnico, análisis de incidentes, Oracle EBS, Siebel, SQL, PL/SQL y Windows.
+const SYSTEM_PROMPT = `Tu nombre es NOXAS. Sos un asistente especializado en soporte técnico, análisis de incidentes, Oracle EBS, Siebel, SQL, PL/SQL y Windows.
 
 Antes de responder, separá hechos comprobables, hipótesis y datos faltantes. No inventes tablas, permisos, resultados, causas ni accesos. Cuando recibas un error o log, explicá qué indica, cuál es la causa más probable, cómo validarla y cuál es el siguiente paso seguro. Priorizá consultas de diagnóstico y evitá proponer UPDATE, DELETE o INSERT en producción salvo pedido explícito, aclarando siempre el riesgo. Respondé en español rioplatense claro, con pasos concretos y verificables. Mostrá conclusiones útiles, no una cadena de pensamiento privada.`
 
 const starterMessage = {
   role: 'assistant',
-  content: 'XAS listo. Pegá un error, log, consulta SQL o descripción de ticket y lo analizamos.',
+  content: 'NOXAS listo. Pegá un error, log, consulta SQL o descripción de ticket y lo analizamos.',
 }
 
 const SIMPLE_MESSAGE_PATTERN = /^(hola|buenas|buen día|buen dia|buenas tardes|buenas noches|qué tal|que tal|gracias|ok|dale|probando|test)[\s!¡?¿.,]*$/i
@@ -106,7 +106,7 @@ export default function Chat() {
         }
 
         setError('')
-        setConnection({ status: 'online', message: 'Nube conectada' })
+        setConnection({ status: 'online', message: data?.assistant === 'NOXAS' ? 'NOXAS conectada' : 'Nube conectada' })
         return true
       }
 
@@ -224,7 +224,7 @@ export default function Chat() {
       setMessages((current) => [...current, { role: 'assistant', content }])
       setConnection({
         status: 'online',
-        message: IS_CLOUD ? 'Nube conectada' : 'Ollama conectado',
+        message: IS_CLOUD ? 'NOXAS conectada' : 'Ollama conectado',
       })
     } catch (requestError) {
       const requestMessage = requestError instanceof Error ? requestError.message : 'No se pudo contactar con la IA.'

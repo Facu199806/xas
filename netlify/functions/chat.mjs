@@ -1,4 +1,7 @@
-const SYSTEM_PROMPT = `Tu nombre es XAS. Sos un asistente especializado en soporte técnico, análisis de incidentes, Oracle EBS, Siebel, SQL, PL/SQL y Windows.
+const API_NAME = 'NOXAS API'
+const API_VERSION = '2.0.0'
+
+const SYSTEM_PROMPT = `Tu nombre es NOXAS. Sos un asistente especializado en soporte técnico, análisis de incidentes, Oracle EBS, Siebel, SQL, PL/SQL y Windows.
 
 Antes de responder, separá hechos comprobables, hipótesis y datos faltantes. No inventes tablas, permisos, resultados, causas ni accesos. Cuando recibas un error o log, explicá qué indica, cuál es la causa más probable, cómo validarla y cuál es el siguiente paso seguro. Priorizá consultas de diagnóstico y evitá proponer UPDATE, DELETE o INSERT en producción salvo pedido explícito, aclarando siempre el riesgo. Respondé en español rioplatense claro, con pasos concretos y verificables. Mostrá conclusiones útiles, no una cadena de pensamiento privada.`
 
@@ -14,6 +17,7 @@ function json(data, status = 200) {
     headers: {
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
+      'X-NOXAS-API-Version': API_VERSION,
     },
   })
 }
@@ -75,30 +79,47 @@ function gatewayUnavailableMessage() {
   return 'AI Gateway no está disponible para esta Function. Verificá que el equipo use un plan basado en créditos, que Netlify AI Features esté habilitado y que no haya variables OPENAI_API_KEY u OPENAI_BASE_URL creadas manualmente de forma incompleta.'
 }
 
+function apiMetadata() {
+  return {
+    name: API_NAME,
+    version: API_VERSION,
+    endpoint: '/api/chat',
+  }
+}
+
 export default async function handler(request) {
   const gateway = resolveGateway()
 
   if (request.method === 'GET') {
     return json({
       ok: Boolean(gateway),
+      api: apiMetadata(),
+      assistant: 'NOXAS',
       provider: 'Netlify AI Gateway',
       model: DEFAULT_MODEL,
       credentialSource: gateway?.source || null,
       diagnostics: gatewayDiagnostics(),
-      message: gateway ? 'AI Gateway disponible.' : gatewayUnavailableMessage(),
+      message: gateway ? 'NOXAS está conectada al AI Gateway.' : gatewayUnavailableMessage(),
     }, gateway ? 200 : 503)
   }
 
   if (request.method !== 'POST') {
-    return json({ error: { message: 'Método no permitido.' } }, 405)
+    return json({
+      api: apiMetadata(),
+      error: { message: 'Método no permitido.' },
+    }, 405)
   }
 
   if (!isAuthorized(request)) {
-    return json({ error: { message: 'Código de acceso incorrecto o ausente.' } }, 401)
+    return json({
+      api: apiMetadata(),
+      error: { message: 'Código de acceso incorrecto o ausente.' },
+    }, 401)
   }
 
   if (!gateway) {
     return json({
+      api: apiMetadata(),
       error: {
         message: gatewayUnavailableMessage(),
         diagnostics: gatewayDiagnostics(),
@@ -108,12 +129,20 @@ export default async function handler(request) {
 
   try {
     const rawBody = await request.text()
-    if (rawBody.length > 100000) return json({ error: { message: 'Solicitud demasiado grande.' } }, 413)
+    if (rawBody.length > 100000) {
+      return json({
+        api: apiMetadata(),
+        error: { message: 'Solicitud demasiado grande.' },
+      }, 413)
+    }
 
     const body = rawBody ? JSON.parse(rawBody) : {}
     const messages = sanitizeMessages(body.messages)
     if (!messages.some((item) => item.role === 'user')) {
-      return json({ error: { message: 'Falta un mensaje del usuario.' } }, 400)
+      return json({
+        api: apiMetadata(),
+        error: { message: 'Falta un mensaje del usuario.' },
+      }, 400)
     }
 
     const reasoningEffort = ALLOWED_EFFORTS.has(body.reasoning_effort)
@@ -141,18 +170,31 @@ export default async function handler(request) {
     try {
       data = text ? JSON.parse(text) : {}
     } catch {
-      return json({ error: { message: `El proveedor respondió un formato inválido (${upstream.status}).` } }, 502)
+      return json({
+        api: apiMetadata(),
+        error: { message: `El proveedor respondió un formato inválido (${upstream.status}).` },
+      }, 502)
     }
 
     if (!upstream.ok) {
       const message = data?.error?.message || `El proveedor devolvió HTTP ${upstream.status}.`
-      return json({ error: { message } }, upstream.status)
+      return json({
+        api: apiMetadata(),
+        error: { message },
+      }, upstream.status)
     }
 
     const content = data?.choices?.[0]?.message?.content?.trim()
-    if (!content) return json({ error: { message: 'El modelo respondió sin contenido.' } }, 502)
+    if (!content) {
+      return json({
+        api: apiMetadata(),
+        error: { message: 'El modelo respondió sin contenido.' },
+      }, 502)
+    }
 
     return json({
+      api: apiMetadata(),
+      assistant: 'NOXAS',
       choices: [{ message: { role: 'assistant', content } }],
       model: data.model || DEFAULT_MODEL,
       usage: data.usage || null,
@@ -161,6 +203,7 @@ export default async function handler(request) {
   } catch (error) {
     const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError'
     return json({
+      api: apiMetadata(),
       error: {
         message: timedOut
           ? 'La IA en la nube tardó demasiado. Probá nuevamente con una consulta más corta.'
