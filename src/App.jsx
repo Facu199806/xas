@@ -21,13 +21,20 @@ export default function App() {
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col gap-4 px-3 py-3 sm:gap-6 sm:px-4 sm:py-6 lg:px-8">
-        <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/90 sm:p-5 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-600 dark:text-cyan-400">XAS workspace</p>
-            <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Asistente para soporte</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
-              Análisis de tickets, errores, logs y consultas técnicas desde la web, el celular o tu entorno local.
-            </p>
+        <header className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white/90 p-4 shadow-sm backdrop-blur transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/90 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="flex min-w-0 items-center gap-4">
+            <img
+              src="/xas-icon.svg"
+              alt="Logo de NOXAS"
+              className="h-16 w-16 shrink-0 rounded-2xl shadow-lg shadow-cyan-500/10 ring-1 ring-slate-200 dark:ring-slate-700 sm:h-20 sm:w-20"
+            />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.25em] text-cyan-600 dark:text-cyan-400">NOXAS workspace</p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Asistente para soporte</h1>
+              <p className="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-400">
+                Análisis de tickets, errores, logs y consultas técnicas desde la web, el celular o tu entorno local.
+              </p>
+            </div>
           </div>
           <ToggleTheme darkMode={darkMode} toggle={() => setDarkMode((value) => !value)} />
         </header>
