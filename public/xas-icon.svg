@@ -1,7 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#020617"/>
-  <circle cx="256" cy="256" r="168" fill="#0f172a" stroke="#22d3ee" stroke-width="20"/>
-  <path d="M155 166h55l46 62 46-62h55l-73 94 79 102h-56l-51-69-51 69h-56l79-102-73-94z" fill="#e2e8f0"/>
-  <circle cx="256" cy="94" r="18" fill="#22d3ee"/>
-  <circle cx="256" cy="418" r="18" fill="#22d3ee"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">NOXAS</title>
+  <desc id="desc">Emblema abstracto metálico en forma de X con curvas y luz turquesa.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#01050a"/>
+      <stop offset="0.48" stop-color="#071219"/>
+      <stop offset="1" stop-color="#010204"/>
+    </linearGradient>
+    <linearGradient id="steelA" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#dbe7ed"/>
+      <stop offset="0.25" stop-color="#61717c"/>
+      <stop offset="0.55" stop-color="#111820"/>
+      <stop offset="0.82" stop-color="#2d3942"/>
+      <stop offset="1" stop-color="#b8c5cc"/>
+    </linearGradient>
+    <linearGradient id="steelB" x1="1" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#edf5f7"/>
+      <stop offset="0.22" stop-color="#6d7d86"/>
+      <stop offset="0.52" stop-color="#12191f"/>
+      <stop offset="0.8" stop-color="#36434b"/>
+      <stop offset="1" stop-color="#cad4d9"/>
+    </linearGradient>
+    <filter id="cyanGlow" x="-35%" y="-35%" width="170%" height="170%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="drop" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="11" flood-color="#000" flood-opacity="0.78"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="112" fill="url(#background)"/>
+  <rect x="12" y="12" width="488" height="488" rx="104" fill="none" stroke="#102832" stroke-width="4"/>
+
+  <g filter="url(#drop)" stroke-linejoin="round">
+    <path d="M72 94 C168 105 226 154 282 218 C340 284 390 352 448 428 C376 405 322 365 270 310 C219 255 176 194 112 151 Z"
+          fill="#07141a" stroke="#22d3ee" stroke-opacity="0.58" stroke-width="10" filter="url(#cyanGlow)"/>
+    <path d="M72 94 C168 105 226 154 282 218 C340 284 390 352 448 428 C376 405 322 365 270 310 C219 255 176 194 112 151 Z"
+          fill="url(#steelA)" stroke="#83f6ff" stroke-opacity="0.55" stroke-width="2.5"/>
+    <path d="M92 109 C174 124 226 165 274 221" fill="none" stroke="#f8fafc" stroke-opacity="0.38" stroke-width="4" stroke-linecap="round"/>
+
+    <path d="M66 430 C151 382 190 326 225 260 C267 181 334 121 452 78 C365 143 321 205 287 274 C248 355 190 413 66 430 Z"
+          fill="#07141a" stroke="#22d3ee" stroke-opacity="0.68" stroke-width="11" filter="url(#cyanGlow)"/>
+    <path d="M66 430 C151 382 190 326 225 260 C267 181 334 121 452 78 C365 143 321 205 287 274 C248 355 190 413 66 430 Z"
+          fill="url(#steelB)" stroke="#9cf9ff" stroke-opacity="0.58" stroke-width="2.5"/>
+    <path d="M88 414 C158 371 195 319 229 255 C271 177 334 123 424 91" fill="none" stroke="#f8fafc" stroke-opacity="0.36" stroke-width="4" stroke-linecap="round"/>
+
+    <path d="M181 137 C134 176 112 222 126 267 C139 310 178 337 218 326 C245 319 267 299 284 270 C252 293 221 300 197 283 C166 261 164 216 196 169 Z"
+          fill="#07141a" stroke="#22d3ee" stroke-opacity="0.62" stroke-width="9" filter="url(#cyanGlow)"/>
+    <path d="M181 137 C134 176 112 222 126 267 C139 310 178 337 218 326 C245 319 267 299 284 270 C252 293 221 300 197 283 C166 261 164 216 196 169 Z"
+          fill="url(#steelA)" stroke="#91f7ff" stroke-opacity="0.52" stroke-width="2.5"/>
+
+    <path d="M304 246 C356 284 405 342 432 407 C391 363 351 329 305 302 Z"
+          fill="url(#steelA)" stroke="#22d3ee" stroke-opacity="0.55" stroke-width="4" filter="url(#cyanGlow)"/>
+  </g>
 </svg>
