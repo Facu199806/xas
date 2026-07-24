@@ -1,6 +1,34 @@
 -- NOXAS - Base de conocimiento y trazabilidad de fuentes
+-- Ejecutar con F5 / Run Script conectado como NOXAS_DEV al servicio FREEPDB1.
 -- Diseñada para RAG: recuperar documentación relevante y citarla.
 -- La ingestión debe respetar términos de uso, licencias y permisos de cada fuente.
+
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
+
+DECLARE
+    v_container  VARCHAR2(128) := SYS_CONTEXT('USERENV', 'CON_NAME');
+    v_user       VARCHAR2(128) := SYS_CONTEXT('USERENV', 'SESSION_USER');
+    v_core_count NUMBER;
+BEGIN
+    IF v_container <> 'FREEPDB1' THEN
+        RAISE_APPLICATION_ERROR(-20021, '002_knowledge_schema.sql debe ejecutarse dentro de FREEPDB1.');
+    END IF;
+
+    IF v_user <> 'NOXAS_DEV' THEN
+        RAISE_APPLICATION_ERROR(-20022, '002_knowledge_schema.sql debe ejecutarse conectado como NOXAS_DEV.');
+    END IF;
+
+    SELECT COUNT(*)
+      INTO v_core_count
+      FROM user_tables
+     WHERE table_name IN ('NOXAS_USER', 'NOXAS_CONVERSATION', 'NOXAS_MESSAGE');
+
+    IF v_core_count <> 3 THEN
+        RAISE_APPLICATION_ERROR(-20023, 'Primero debe finalizar correctamente 001_core_schema.sql.');
+    END IF;
+END;
+/
 
 CREATE TABLE noxas_kb_source (
     source_id            RAW(16) DEFAULT SYS_GUID() NOT NULL,
@@ -169,3 +197,5 @@ INSERT INTO noxas_kb_source (
 );
 
 COMMIT;
+
+PROMPT 002_knowledge_schema.sql finalizado correctamente.
