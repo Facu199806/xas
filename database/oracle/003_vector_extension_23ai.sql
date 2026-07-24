@@ -1,9 +1,34 @@
 -- NOXAS - Extensión opcional para Oracle AI Vector Search
--- Ejecutar únicamente si la instancia reconoce el tipo VECTOR.
--- La dimensión debe coincidir exactamente con el modelo de embeddings elegido.
--- Ejemplo habitual: 1536. Cambiar antes de ejecutar si corresponde.
+-- NO EJECUTAR en el entorno validado actualmente:
+--   Oracle Database Free 23.3.0.23.09
+--   COMPATIBLE = 23.0.0
+-- Oracle requiere COMPATIBLE 23.4.0 o superior para utilizar el tipo VECTOR.
+-- Mantener NOXAS_VECTOR_CONFIRMED = NO hasta actualizar la instancia,
+-- elegir el modelo de embeddings y confirmar su dimensión exacta.
 
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
+
+DEFINE NOXAS_VECTOR_CONFIRMED = NO
 DEFINE NOXAS_EMBEDDING_DIM = 1536
+
+DECLARE
+    v_confirmation VARCHAR2(10) := UPPER(TRIM('&NOXAS_VECTOR_CONFIRMED'));
+    v_container    VARCHAR2(128) := SYS_CONTEXT('USERENV', 'CON_NAME');
+    v_user         VARCHAR2(128) := SYS_CONTEXT('USERENV', 'SESSION_USER');
+BEGIN
+    IF v_container <> 'FREEPDB1' OR v_user <> 'NOXAS_DEV' THEN
+        RAISE_APPLICATION_ERROR(-20031, '003_vector_extension_23ai.sql requiere NOXAS_DEV conectado a FREEPDB1.');
+    END IF;
+
+    IF v_confirmation <> 'YES' THEN
+        RAISE_APPLICATION_ERROR(
+            -20032,
+            'Extensión VECTOR bloqueada. Mantenga este archivo sin ejecutar mientras COMPATIBLE sea 23.0.0.'
+        );
+    END IF;
+END;
+/
 
 CREATE TABLE noxas_kb_embedding (
     chunk_id             RAW(16) NOT NULL,
