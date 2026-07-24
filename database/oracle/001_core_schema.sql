@@ -1,6 +1,26 @@
--- NOXAS - Modelo principal para Oracle Database 23c/23ai Free
--- Ejecutar con un usuario propietario del esquema de desarrollo.
+-- NOXAS - Modelo principal para Oracle Database 23c Free
+-- Ejecutar con F5 / Run Script conectado como NOXAS_DEV al servicio FREEPDB1.
 -- No contiene datos reales ni contraseñas en texto plano.
+
+SET SERVEROUTPUT ON
+WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
+
+DECLARE
+    v_container VARCHAR2(128) := SYS_CONTEXT('USERENV', 'CON_NAME');
+    v_user      VARCHAR2(128) := SYS_CONTEXT('USERENV', 'SESSION_USER');
+BEGIN
+    DBMS_OUTPUT.PUT_LINE('Usuario actual    : ' || v_user);
+    DBMS_OUTPUT.PUT_LINE('Contenedor actual : ' || v_container);
+
+    IF v_container <> 'FREEPDB1' THEN
+        RAISE_APPLICATION_ERROR(-20011, '001_core_schema.sql debe ejecutarse dentro de FREEPDB1.');
+    END IF;
+
+    IF v_user <> 'NOXAS_DEV' THEN
+        RAISE_APPLICATION_ERROR(-20012, '001_core_schema.sql debe ejecutarse conectado como NOXAS_DEV.');
+    END IF;
+END;
+/
 
 ALTER SESSION SET NLS_TIMESTAMP_TZ_FORMAT = 'YYYY-MM-DD HH24:MI:SS.FF TZH:TZM';
 
@@ -177,3 +197,5 @@ COMMENT ON TABLE noxas_conversation IS 'Cabecera de una conversación pertenecie
 COMMENT ON TABLE noxas_message IS 'Mensajes ordenados de una conversación, con métricas opcionales del modelo.';
 COMMENT ON TABLE noxas_session IS 'Sesiones revocables. Sólo almacena el hash del token de renovación.';
 COMMENT ON TABLE noxas_audit_event IS 'Eventos de seguridad y auditoría sin guardar secretos.';
+
+PROMPT 001_core_schema.sql finalizado correctamente.
