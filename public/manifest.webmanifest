@@ -1,11 +1,11 @@
 {
-  "name": "NOXAS - Asistente técnico",
+  "name": "NOXAS - Asistente de soporte",
   "short_name": "NOXAS",
   "description": "Asistente para análisis de tickets, errores, Oracle EBS, Siebel y SQL.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#020617",
-  "theme_color": "#0891b2",
+  "theme_color": "#071219",
   "orientation": "any",
   "icons": [
     {
