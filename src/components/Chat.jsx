@@ -26,7 +26,7 @@ const MAX_TOKENS = Number(import.meta.env.VITE_AI_MAX_TOKENS ?? 1024)
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_AI_TIMEOUT_MS ?? 120000)
 const MAX_CONTEXT_MESSAGES = 18
 
-const SYSTEM_PROMPT = `Tu nombre es XAS. Sos un asistente especializado en soporte técnico, análisis de incidentes, Oracle EBS, Siebel, SQL, PL/SQL y Windows.
+const SYSTEM_PROMPT = `Tu nombre es NOXAS. Sos un asistente especializado en soporte técnico, análisis de incidentes, Oracle EBS, Siebel, SQL, PL/SQL y Windows.
 
 Antes de responder, separá hechos comprobables, hipótesis y datos faltantes. No inventes tablas, permisos, resultados, causas ni accesos. Cuando recibas un error o log, explicá qué indica, cuál es la causa más probable, cómo validarla y cuál es el siguiente paso seguro. Priorizá consultas de diagnóstico y evitá proponer UPDATE, DELETE o INSERT en producción salvo pedido explícito, aclarando siempre el riesgo. Respondé en español rioplatense claro, con pasos concretos y verificables. Mostrá conclusiones útiles, no una cadena de pensamiento privada.`
 
@@ -39,7 +39,7 @@ const QUICK_PROMPTS = [
   'Revisá esta consulta SQL y marcá posibles problemas de rendimiento.',
 ]
 
-function conversationMessages(messages) {
+function prepareMessages(messages) {
   return messages
     .filter((message) => message.content !== STARTER_MESSAGE.content)
     .slice(-MAX_CONTEXT_MESSAGES)
@@ -47,7 +47,7 @@ function conversationMessages(messages) {
 }
 
 function buildApiMessages(messages) {
-  const conversation = conversationMessages(messages)
+  const conversation = prepareMessages(messages)
   return IS_CLOUD ? conversation : [{ role: 'system', content: SYSTEM_PROMPT }, ...conversation]
 }
 
@@ -68,9 +68,15 @@ function reasoningLabel(effort) {
 }
 
 function connectionClasses(status) {
-  if (status === 'online') return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
-  if (status === 'missing') return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300'
-  if (status === 'offline') return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+  if (status === 'online') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
+  }
+  if (status === 'missing') {
+    return 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300'
+  }
+  if (status === 'offline') {
+    return 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300'
+  }
   return 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
 }
 
@@ -88,16 +94,14 @@ export default function Chat() {
   const abortControllerRef = useRef(null)
 
   const activeConversation = useMemo(
-    () => conversationState.conversations.find((conversation) => conversation.id === conversationState.activeId)
+    () => conversationState.conversations.find(({ id }) => id === conversationState.activeId)
       || conversationState.conversations[0],
     [conversationState],
   )
+
   const messages = activeConversation?.messages || [{ ...STARTER_MESSAGE }]
-  const hasUserMessages = messages.some((message) => message.role === 'user')
-  const canSend = useMemo(
-    () => input.trim().length > 0 && !loading && connection.status === 'online',
-    [input, loading, connection.status],
-  )
+  const hasUserMessages = messages.some(({ role }) => role === 'user')
+  const canSend = input.trim().length > 0 && !loading && connection.status === 'online'
 
   function updateConversation(conversationId, updater) {
     setConversationState((current) => ({
@@ -108,7 +112,7 @@ export default function Chat() {
     }))
   }
 
-  function stopCurrentRequest(reason = 'navigation') {
+  function stopRequest(reason = 'navigation') {
     abortControllerRef.current?.abort(reason)
   }
 
@@ -129,7 +133,7 @@ export default function Chat() {
         }
 
         setError('')
-        setConnection({ status: 'online', message: 'Nube conectada' })
+        setConnection({ status: 'online', message: data?.assistant === 'NOXAS' ? 'NOXAS conectada' : 'Nube conectada' })
         return true
       }
 
@@ -138,21 +142,20 @@ export default function Chat() {
       const data = rawText ? JSON.parse(rawText) : {}
       if (!response.ok) throw new Error(`HTTP ${response.status}`)
 
-      const availableModels = Array.isArray(data?.data) ? data.data.map((item) => item.id) : []
-      const modelInstalled = availableModels.includes(LOCAL_MODEL)
-      setConnection(
-        modelInstalled
-          ? { status: 'online', message: 'Ollama conectado' }
-          : { status: 'missing', message: `Falta descargar ${LOCAL_MODEL}` },
-      )
-      return modelInstalled
+      const availableModels = Array.isArray(data?.data) ? data.data.map(({ id }) => id) : []
+      const installed = availableModels.includes(LOCAL_MODEL)
+      setConnection(installed
+        ? { status: 'online', message: 'Ollama conectado' }
+        : { status: 'missing', message: `Falta descargar ${LOCAL_MODEL}` })
+      return installed
     } catch (connectionError) {
-      const message = connectionError instanceof Error ? connectionError.message : 'No se pudo comprobar la conexión.'
       setConnection({
         status: 'offline',
         message: IS_CLOUD ? 'Backend desconectado' : 'Ollama desconectado',
       })
-      if (IS_CLOUD) setError(message)
+      if (IS_CLOUD) {
+        setError(connectionError instanceof Error ? connectionError.message : 'No se pudo comprobar la conexión.')
+      }
       return false
     }
   }
@@ -188,7 +191,7 @@ export default function Chat() {
   }, [loading])
 
   function createNewConversation() {
-    stopCurrentRequest()
+    stopRequest()
     const conversation = createConversation()
     setConversationState((current) => ({
       ...current,
@@ -201,14 +204,14 @@ export default function Chat() {
 
   function selectConversation(conversationId) {
     if (conversationId === conversationState.activeId) return
-    stopCurrentRequest()
+    stopRequest()
     setConversationState((current) => ({ ...current, activeId: conversationId }))
     setInput('')
     setError('')
   }
 
   function renameConversation(conversationId) {
-    const conversation = conversationState.conversations.find((item) => item.id === conversationId)
+    const conversation = conversationState.conversations.find(({ id }) => id === conversationId)
     if (!conversation) return
 
     const nextTitle = window.prompt('Nombre de la conversación:', conversation.title)?.trim()
@@ -222,12 +225,12 @@ export default function Chat() {
   }
 
   function deleteConversation(conversationId) {
-    const conversation = conversationState.conversations.find((item) => item.id === conversationId)
+    const conversation = conversationState.conversations.find(({ id }) => id === conversationId)
     if (!conversation || !window.confirm(`¿Eliminar “${conversation.title}”?`)) return
 
-    stopCurrentRequest()
+    stopRequest()
     setConversationState((current) => {
-      const remaining = current.conversations.filter((item) => item.id !== conversationId)
+      const remaining = current.conversations.filter(({ id }) => id !== conversationId)
       if (!remaining.length) {
         const replacement = createConversation()
         return { ...current, activeId: replacement.id, conversations: [replacement] }
@@ -247,7 +250,7 @@ export default function Chat() {
     if (!activeConversation || !hasUserMessages) return
     if (!window.confirm('¿Vaciar los mensajes de esta conversación?')) return
 
-    stopCurrentRequest()
+    stopRequest()
     updateConversation(activeConversation.id, (conversation) => ({
       ...conversation,
       title: 'Nueva consulta',
@@ -266,9 +269,9 @@ export default function Chat() {
     const conversationId = activeConversation.id
     const effort = chooseReasoningEffort(text)
     const nextMessages = [...activeConversation.messages, { role: 'user', content: text }]
+    const firstUserMessage = !activeConversation.messages.some(({ role }) => role === 'user')
     const controller = new AbortController()
     const timeoutId = window.setTimeout(() => controller.abort('timeout'), REQUEST_TIMEOUT_MS)
-    const firstUserMessage = !activeConversation.messages.some((message) => message.role === 'user')
 
     abortControllerRef.current = controller
     updateConversation(conversationId, (conversation) => ({
@@ -330,43 +333,35 @@ export default function Chat() {
         messages: [...conversation.messages, { role: 'assistant', content }],
         updatedAt: Date.now(),
       }))
-      setConnection({
-        status: 'online',
-        message: IS_CLOUD ? 'Nube conectada' : 'Ollama conectado',
-      })
+      setConnection({ status: 'online', message: IS_CLOUD ? 'NOXAS conectada' : 'Ollama conectado' })
     } catch (requestError) {
-      const requestMessage = requestError instanceof Error ? requestError.message : 'No se pudo contactar con la IA.'
-      const aborted = controller.signal.aborted
-      const timedOut = aborted && controller.signal.reason === 'timeout'
-      const manuallyCancelled = aborted && controller.signal.reason === 'manual'
-      const navigationCancelled = aborted && controller.signal.reason === 'navigation'
-      const networkFailure = /failed to fetch|network|econnrefused|no se pudo conectar/i.test(requestMessage)
-      const gatewayFailure = /AI Gateway|plan basado en créditos|AI Features|OPENAI_API_KEY|OPENAI_BASE_URL/i.test(requestMessage)
+      const message = requestError instanceof Error ? requestError.message : 'No se pudo contactar con la IA.'
+      const reason = controller.signal.reason
+      const networkFailure = /failed to fetch|network|econnrefused|no se pudo conectar/i.test(message)
+      const gatewayFailure = /AI Gateway|plan basado en créditos|AI Features|OPENAI_API_KEY|OPENAI_BASE_URL/i.test(message)
 
-      if (timedOut) {
+      if (controller.signal.aborted && reason === 'timeout') {
         setError(`La respuesta superó ${Math.round(REQUEST_TIMEOUT_MS / 1000)} segundos. Probá nuevamente con una consulta más corta.`)
-      } else if (manuallyCancelled) {
+      } else if (controller.signal.aborted && reason === 'manual') {
         setError('Solicitud cancelada.')
-      } else if (navigationCancelled) {
+      } else if (controller.signal.aborted && reason === 'navigation') {
         setError('')
       } else if (networkFailure) {
-        setError(IS_CLOUD ? 'No se pudo contactar con el backend de Netlify.' : `Ollama no está disponible. Ejecutá: ollama run ${LOCAL_MODEL}`)
+        setError(IS_CLOUD
+          ? 'No se pudo contactar con el backend de Netlify.'
+          : `Ollama no está disponible. Ejecutá: ollama run ${LOCAL_MODEL}`)
         setConnection({ status: 'offline', message: IS_CLOUD ? 'Backend desconectado' : 'Ollama desconectado' })
       } else if (IS_CLOUD && gatewayFailure) {
-        setError(requestMessage)
+        setError(message)
         setConnection({ status: 'missing', message: 'Gateway sin configurar' })
       } else {
-        setError(requestMessage)
+        setError(message)
       }
     } finally {
       window.clearTimeout(timeoutId)
       if (abortControllerRef.current === controller) abortControllerRef.current = null
       setLoading(false)
     }
-  }
-
-  function cancelRequest() {
-    abortControllerRef.current?.abort('manual')
   }
 
   return (
@@ -501,12 +496,14 @@ export default function Chat() {
                 }
               }}
               rows={3}
-              placeholder={connection.status === 'online' ? 'Escribí una consulta, pegá un error o compartí un log...' : 'Esperando una conexión disponible...'}
+              placeholder={connection.status === 'online'
+                ? 'Escribí una consulta, pegá un error o compartí un log...'
+                : 'Esperando una conexión disponible...'}
               className="min-h-24 flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:text-sm"
             />
             <button
               type={loading ? 'button' : 'submit'}
-              onClick={loading ? cancelRequest : undefined}
+              onClick={loading ? () => abortControllerRef.current?.abort('manual') : undefined}
               disabled={!loading && !canSend}
               className="rounded-2xl bg-cyan-600 px-6 py-3 font-bold text-white transition hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40 sm:self-end"
             >
