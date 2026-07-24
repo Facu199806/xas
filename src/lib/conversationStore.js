@@ -3,7 +3,7 @@ const LEGACY_HISTORY_KEY = 'xas-chat-history-v4'
 
 export const STARTER_MESSAGE = {
   role: 'assistant',
-  content: 'XAS listo. Pegá un error, log, consulta SQL o descripción de ticket y lo analizamos.',
+  content: 'NOXAS listo. Pegá un error, log, consulta SQL o descripción de ticket y lo analizamos.',
 }
 
 function createId() {
@@ -73,7 +73,7 @@ export function loadConversationState() {
       }
     }
   } catch {
-    // Un almacenamiento dañado no debe impedir abrir XAS.
+    // Un almacenamiento dañado no debe impedir abrir NOXAS.
   }
 
   let legacyMessages
