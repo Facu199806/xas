@@ -22,9 +22,11 @@ export default function App() {
       <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-4 px-3 py-3 sm:gap-6 sm:px-5 sm:py-5 lg:px-8">
         <header className="flex items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/90 sm:px-5 sm:py-4">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-lg font-black text-cyan-300 shadow-sm ring-1 ring-cyan-400/30 dark:bg-cyan-300 dark:text-slate-950">
-              N
-            </div>
+            <img
+              src="/xas-icon.svg"
+              alt="Logo de NOXAS"
+              className="h-11 w-11 shrink-0 rounded-2xl shadow-lg shadow-cyan-500/10 ring-1 ring-slate-200 dark:ring-slate-700 sm:h-14 sm:w-14"
+            />
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h1 className="truncate text-xl font-black tracking-tight sm:text-2xl">NOXAS</h1>
