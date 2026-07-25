@@ -185,7 +185,7 @@ CREATE TABLE noxas_audit_event (
 CREATE INDEX ix_noxas_identity_user ON noxas_identity (user_id);
 CREATE INDEX ix_noxas_conversation_user_date ON noxas_conversation (user_id, updated_at DESC);
 CREATE INDEX ix_noxas_conversation_status ON noxas_conversation (user_id, conversation_status, updated_at DESC);
-CREATE INDEX ix_noxas_message_conversation ON noxas_message (conversation_id, sequence_no);
+-- uq_noxas_message_sequence ya crea un índice único sobre (conversation_id, sequence_no).
 CREATE INDEX ix_noxas_session_user_expiry ON noxas_session (user_id, expires_at);
 CREATE INDEX ix_noxas_audit_user_date ON noxas_audit_event (user_id, created_at DESC);
 CREATE INDEX ix_noxas_audit_type_date ON noxas_audit_event (event_type, created_at DESC);
