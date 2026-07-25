@@ -149,7 +149,7 @@ CREATE TABLE noxas_kb_retrieval_log (
 
 CREATE INDEX ix_noxas_kb_document_source ON noxas_kb_document (source_id, document_status, updated_at DESC);
 CREATE INDEX ix_noxas_kb_document_product ON noxas_kb_document (product_name, product_version);
-CREATE INDEX ix_noxas_kb_chunk_document ON noxas_kb_chunk (document_id, chunk_no);
+-- uq_noxas_kb_chunk_no ya crea un índice único sobre (document_id, chunk_no).
 CREATE INDEX ix_noxas_kb_chunk_embed ON noxas_kb_chunk (embedding_status, updated_at);
 CREATE INDEX ix_noxas_kb_sync_source ON noxas_kb_sync_run (source_id, started_at DESC);
 CREATE INDEX ix_noxas_kb_retrieval_date ON noxas_kb_retrieval_log (created_at DESC);
