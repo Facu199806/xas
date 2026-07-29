@@ -16,14 +16,23 @@ html {
   scroll-behavior: smooth;
 }
 
-.duration-300 {
-  transition-duration: 150ms;
+html.theme-switching *,
+html.theme-switching *::before,
+html.theme-switching *::after {
+  transition-property: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background-color: #f1f5f9;
+}
+
+html.dark body {
+  background-color: #020617;
 }
 
 button,
