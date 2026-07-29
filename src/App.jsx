@@ -3,6 +3,7 @@ import Chat from './components/Chat'
 import ToggleTheme from './components/ToggleTheme'
 
 const THEME_KEY = 'xas-theme'
+const THEME_TRANSITION_CLASS = 'theme-switching'
 const THEME_COLORS = {
   dark: '#020617',
   light: '#f1f5f9',
@@ -14,6 +15,17 @@ function applyTheme(darkMode) {
   document.documentElement.classList.toggle('dark', darkMode)
   document.documentElement.style.colorScheme = theme
   document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLORS[theme])
+}
+
+function disableTransitionsForThemeSwitch() {
+  const root = document.documentElement
+  root.classList.add(THEME_TRANSITION_CLASS)
+
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(() => {
+      root.classList.remove(THEME_TRANSITION_CLASS)
+    })
+  })
 }
 
 export default function App() {
@@ -28,6 +40,14 @@ export default function App() {
     applyTheme(darkMode)
     localStorage.setItem(THEME_KEY, darkMode ? 'dark' : 'light')
   }, [darkMode])
+
+  function toggleTheme() {
+    const nextDarkMode = !document.documentElement.classList.contains('dark')
+
+    disableTransitionsForThemeSwitch()
+    applyTheme(nextDarkMode)
+    setDarkMode(nextDarkMode)
+  }
 
   return (
     <main className="min-h-screen bg-slate-100 text-slate-950 transition-colors duration-150 dark:bg-slate-950 dark:text-slate-100">
@@ -52,7 +72,7 @@ export default function App() {
             </div>
           </div>
 
-          <ToggleTheme darkMode={darkMode} toggle={() => setDarkMode((value) => !value)} />
+          <ToggleTheme darkMode={darkMode} toggle={toggleTheme} />
         </header>
 
         <Chat />
