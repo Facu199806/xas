@@ -1,26 +1,38 @@
-import { useEffect, useState } from 'react'
+import { useLayoutEffect, useState } from 'react'
 import Chat from './components/Chat'
 import ToggleTheme from './components/ToggleTheme'
 
 const THEME_KEY = 'xas-theme'
+const THEME_COLORS = {
+  dark: '#020617',
+  light: '#f1f5f9',
+}
+
+function applyTheme(darkMode) {
+  const theme = darkMode ? 'dark' : 'light'
+
+  document.documentElement.classList.toggle('dark', darkMode)
+  document.documentElement.style.colorScheme = theme
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', THEME_COLORS[theme])
+}
 
 export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
     const savedTheme = localStorage.getItem(THEME_KEY)
     if (savedTheme) return savedTheme === 'dark'
-    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false
+    return document.documentElement.classList.contains('dark')
+      || (window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)
   })
 
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode)
-    document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light'
+  useLayoutEffect(() => {
+    applyTheme(darkMode)
     localStorage.setItem(THEME_KEY, darkMode ? 'dark' : 'light')
   }, [darkMode])
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-950 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
+    <main className="min-h-screen bg-slate-100 text-slate-950 transition-colors duration-150 dark:bg-slate-950 dark:text-slate-100">
       <div className="mx-auto flex min-h-screen max-w-[1600px] flex-col gap-4 px-3 py-3 sm:gap-6 sm:px-5 sm:py-5 lg:px-8">
-        <header className="flex items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur transition-colors duration-300 dark:border-slate-800 dark:bg-slate-900/90 sm:px-5 sm:py-4">
+        <header className="flex items-center justify-between gap-4 rounded-3xl border border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur transition-colors duration-150 dark:border-slate-800 dark:bg-slate-900/90 sm:px-5 sm:py-4">
           <div className="flex min-w-0 items-center gap-3">
             <img
               src="/xas-icon.svg"
