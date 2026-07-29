@@ -5,6 +5,29 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="description" content="NOXAS, asistente para análisis de tickets, errores y soporte técnico." />
     <meta name="theme-color" content="#071219" />
+    <script>
+      (() => {
+        let savedTheme = null
+
+        try {
+          savedTheme = localStorage.getItem('xas-theme')
+        } catch {
+          savedTheme = null
+        }
+
+        const prefersDark = window.matchMedia
+          ? window.matchMedia('(prefers-color-scheme: dark)').matches
+          : false
+        const darkMode = savedTheme ? savedTheme === 'dark' : prefersDark
+
+        document.documentElement.classList.toggle('dark', darkMode)
+        document.documentElement.style.colorScheme = darkMode ? 'dark' : 'light'
+        document.querySelector('meta[name="theme-color"]')?.setAttribute(
+          'content',
+          darkMode ? '#020617' : '#f1f5f9',
+        )
+      })()
+    </script>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
