@@ -240,8 +240,7 @@ CREATE INDEX ix_noxas_agent_run_user_date
     ON noxas_agent_run (user_id, created_at DESC);
 CREATE INDEX ix_noxas_agent_run_status
     ON noxas_agent_run (run_status, created_at DESC);
-CREATE INDEX ix_noxas_agent_step_run
-    ON noxas_agent_step (agent_run_id, step_no);
+-- uq_noxas_agent_step_no ya crea un indice unico sobre (agent_run_id, step_no).
 CREATE INDEX ix_noxas_tool_call_run
     ON noxas_tool_call (agent_run_id, created_at);
 CREATE INDEX ix_noxas_tool_call_status
