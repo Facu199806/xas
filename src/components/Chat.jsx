@@ -9,13 +9,16 @@ import {
 } from '../lib/conversationStore'
 
 const ACCESS_KEY = 'xas-cloud-access-token'
+const EXPERIENCE_KEY = 'xas-experience-mode'
+const PROFILE_KEY = 'xas-consumption-profile'
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1'])
 const IS_LOCAL_HOST = LOCAL_HOSTS.has(window.location.hostname)
 const AI_MODE = import.meta.env.VITE_AI_MODE || (IS_LOCAL_HOST ? 'local' : 'cloud')
 const IS_CLOUD = AI_MODE === 'cloud'
-const API_URL = IS_CLOUD
+const CHAT_API_URL = IS_CLOUD
   ? (import.meta.env.VITE_CLOUD_API_URL || '/api/chat')
   : (import.meta.env.VITE_AI_API_URL || '/api/v1/chat/completions')
+const AGENT_API_URL = import.meta.env.VITE_AGENT_API_URL || '/api/agent'
 const MODELS_URL = import.meta.env.VITE_AI_MODELS_URL || '/api/v1/models'
 const LOCAL_MODEL = import.meta.env.VITE_AI_MODEL || 'qwen3:4b'
 const CLOUD_MODEL = import.meta.env.VITE_CLOUD_MODEL_LABEL || 'gpt-5.4-mini'
@@ -24,7 +27,30 @@ const DEFAULT_REASONING_EFFORT = import.meta.env.VITE_AI_REASONING_EFFORT || 'me
 const TEMPERATURE = Number(import.meta.env.VITE_AI_TEMPERATURE ?? 0.2)
 const MAX_TOKENS = Number(import.meta.env.VITE_AI_MAX_TOKENS ?? 1024)
 const REQUEST_TIMEOUT_MS = Number(import.meta.env.VITE_AI_TIMEOUT_MS ?? 120000)
-const MAX_CONTEXT_MESSAGES = 18
+
+const RUN_PROFILES = {
+  economy: {
+    label: 'Ahorro',
+    description: 'Menor consumo: contexto corto y hasta 2 pasos en Agente.',
+    contextMessages: 10,
+    agentEffort: 'minimal',
+    maxSteps: 2,
+  },
+  normal: {
+    label: 'Normal',
+    description: 'Equilibrio entre análisis, herramientas y consumo.',
+    contextMessages: 16,
+    agentEffort: 'low',
+    maxSteps: 4,
+  },
+  deep: {
+    label: 'Profundo',
+    description: 'Más análisis y hasta 6 pasos. Puede consumir bastante más.',
+    contextMessages: 20,
+    agentEffort: 'high',
+    maxSteps: 6,
+  },
+}
 
 const SYSTEM_PROMPT = `Tu nombre es NOXAS. Sos un asistente especializado en soporte técnico, análisis de incidentes, Oracle EBS, Siebel, SQL, PL/SQL y Windows.
 
@@ -33,27 +59,53 @@ Antes de responder, separá hechos comprobables, hipótesis y datos faltantes. N
 const SIMPLE_MESSAGE_PATTERN = /^(hola|buenas|buen día|buen dia|buenas tardes|buenas noches|qué tal|que tal|gracias|ok|dale|probando|test)[\s!¡?¿.,]*$/i
 const TECHNICAL_MESSAGE_PATTERN = /(ora-\d+|sql|pl\/sql|siebel|oracle|ebs|error|log|stack|trace|query|consulta|select\b|join\b|package|procedure|función|funcion|ticket|incidente|windows|servidor|api|http|json|javascript|react|vite|analiz|diagn[oó]st)/i
 
-const QUICK_PROMPTS = [
+const CHAT_QUICK_PROMPTS = [
   'Analizá un ORA-01722 y sugerí validaciones seguras.',
   'Ayudame a redactar una derivación clara para un ticket.',
   'Revisá esta consulta SQL y marcá posibles problemas de rendimiento.',
 ]
 
-function prepareMessages(messages) {
+const AGENT_QUICK_PROMPTS = [
+  'Inspeccioná tus capacidades y explicá qué podés comprobar con herramientas.',
+  'Analizá este incidente, separá hechos e hipótesis y verificá lo que puedas.',
+  'Proponé una acción segura para este problema, pero no ejecutes cambios.',
+]
+
+function loadExperienceMode() {
+  if (!IS_CLOUD) return 'chat'
+  return localStorage.getItem(EXPERIENCE_KEY) === 'agent' ? 'agent' : 'chat'
+}
+
+function loadProfileKey() {
+  const stored = localStorage.getItem(PROFILE_KEY)
+  return RUN_PROFILES[stored] ? stored : 'economy'
+}
+
+function prepareMessages(messages, limit) {
   return messages
     .filter((message) => message.content !== STARTER_MESSAGE.content)
-    .slice(-MAX_CONTEXT_MESSAGES)
+    .slice(-limit)
     .map(({ role, content }) => ({ role, content }))
 }
 
-function buildApiMessages(messages) {
-  const conversation = prepareMessages(messages)
+function buildApiMessages(messages, limit) {
+  const conversation = prepareMessages(messages, limit)
   return IS_CLOUD ? conversation : [{ role: 'system', content: SYSTEM_PROMPT }, ...conversation]
 }
 
-function chooseReasoningEffort(text) {
+function chooseReasoningEffort(text, experienceMode, profileKey) {
   const normalized = text.trim()
   if (SIMPLE_MESSAGE_PATTERN.test(normalized)) return 'none'
+
+  if (experienceMode === 'agent') {
+    return RUN_PROFILES[profileKey].agentEffort
+  }
+
+  if (profileKey === 'economy') {
+    return TECHNICAL_MESSAGE_PATTERN.test(normalized) ? 'low' : 'none'
+  }
+
+  if (profileKey === 'deep') return 'high'
   if (TECHNICAL_MESSAGE_PATTERN.test(normalized)) return DEFAULT_REASONING_EFFORT
   if (normalized.length < 80) return 'low'
   return DEFAULT_REASONING_EFFORT
@@ -80,6 +132,36 @@ function connectionClasses(status) {
   return 'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
 }
 
+function normalizeRunMetadata(data, experienceMode, profile, effort) {
+  const trace = Array.isArray(data?.trace) ? data.trace : []
+  const toolCalls = trace.filter((item) => item.type === 'TOOL_RESULT').length
+  const steps = trace.reduce((maximum, item) => Math.max(maximum, Number(item.step) || 0), 0)
+  const usageSummary = data?.usageSummary
+  const chatUsage = data?.usage
+  const totalTokens = Number.isFinite(usageSummary?.totalTokens)
+    ? usageSummary.totalTokens
+    : Number.isFinite(chatUsage?.total_tokens)
+      ? chatUsage.total_tokens
+      : null
+  const reasoningTokens = Number.isFinite(usageSummary?.reasoningTokens)
+    ? usageSummary.reasoningTokens
+    : Number.isFinite(chatUsage?.completion_tokens_details?.reasoning_tokens)
+      ? chatUsage.completion_tokens_details.reasoning_tokens
+      : null
+
+  return {
+    mode: experienceMode,
+    profile: profile.label,
+    effort,
+    calls: Number.isFinite(usageSummary?.calls) ? usageSummary.calls : 1,
+    totalTokens,
+    reasoningTokens,
+    steps,
+    toolCalls,
+    approvalRequired: data?.approvalRequired || null,
+  }
+}
+
 export default function Chat() {
   const [conversationState, setConversationState] = useState(loadConversationState)
   const [input, setInput] = useState('')
@@ -89,6 +171,9 @@ export default function Chat() {
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
   const [showSecurity, setShowSecurity] = useState(false)
   const [accessToken, setAccessToken] = useState(() => localStorage.getItem(ACCESS_KEY) || '')
+  const [experienceMode, setExperienceMode] = useState(loadExperienceMode)
+  const [profileKey, setProfileKey] = useState(loadProfileKey)
+  const [lastRun, setLastRun] = useState(null)
   const [connection, setConnection] = useState({ status: 'checking', message: 'Comprobando conexión...' })
   const bottomRef = useRef(null)
   const abortControllerRef = useRef(null)
@@ -99,6 +184,9 @@ export default function Chat() {
     [conversationState],
   )
 
+  const profile = RUN_PROFILES[profileKey]
+  const activeApiUrl = IS_CLOUD && experienceMode === 'agent' ? AGENT_API_URL : CHAT_API_URL
+  const quickPrompts = experienceMode === 'agent' ? AGENT_QUICK_PROMPTS : CHAT_QUICK_PROMPTS
   const messages = activeConversation?.messages || [{ ...STARTER_MESSAGE }]
   const hasUserMessages = messages.some(({ role }) => role === 'user')
   const canSend = input.trim().length > 0 && !loading && connection.status === 'online'
@@ -121,7 +209,7 @@ export default function Chat() {
 
     try {
       if (IS_CLOUD) {
-        const response = await fetch(API_URL, { headers: { Accept: 'application/json' } })
+        const response = await fetch(activeApiUrl, { headers: { Accept: 'application/json' } })
         const rawText = await response.text()
         const data = rawText ? JSON.parse(rawText) : {}
 
@@ -133,7 +221,10 @@ export default function Chat() {
         }
 
         setError('')
-        setConnection({ status: 'online', message: data?.assistant === 'NOXAS' ? 'NOXAS conectada' : 'Nube conectada' })
+        setConnection({
+          status: 'online',
+          message: experienceMode === 'agent' ? 'Agente conectado' : 'Chat conectado',
+        })
         return true
       }
 
@@ -162,7 +253,7 @@ export default function Chat() {
 
   useEffect(() => {
     refreshConnection()
-  }, [])
+  }, [experienceMode])
 
   useEffect(() => {
     saveConversationState(conversationState)
@@ -175,6 +266,14 @@ export default function Chat() {
   useEffect(() => {
     localStorage.setItem(ACCESS_KEY, accessToken)
   }, [accessToken])
+
+  useEffect(() => {
+    localStorage.setItem(EXPERIENCE_KEY, experienceMode)
+  }, [experienceMode])
+
+  useEffect(() => {
+    localStorage.setItem(PROFILE_KEY, profileKey)
+  }, [profileKey])
 
   useEffect(() => {
     if (!loading) {
@@ -190,6 +289,20 @@ export default function Chat() {
     return () => window.clearInterval(timer)
   }, [loading])
 
+  function changeExperienceMode(nextMode) {
+    if (!IS_CLOUD || nextMode === experienceMode || loading) return
+    stopRequest()
+    setExperienceMode(nextMode)
+    setError('')
+    setLastRun(null)
+  }
+
+  function changeProfile(nextProfile) {
+    if (!RUN_PROFILES[nextProfile] || loading) return
+    setProfileKey(nextProfile)
+    setLastRun(null)
+  }
+
   function createNewConversation() {
     stopRequest()
     const conversation = createConversation()
@@ -200,6 +313,7 @@ export default function Chat() {
     }))
     setInput('')
     setError('')
+    setLastRun(null)
   }
 
   function selectConversation(conversationId) {
@@ -208,6 +322,7 @@ export default function Chat() {
     setConversationState((current) => ({ ...current, activeId: conversationId }))
     setInput('')
     setError('')
+    setLastRun(null)
   }
 
   function renameConversation(conversationId) {
@@ -244,6 +359,7 @@ export default function Chat() {
     })
     setInput('')
     setError('')
+    setLastRun(null)
   }
 
   function clearCurrentConversation() {
@@ -259,6 +375,7 @@ export default function Chat() {
     }))
     setInput('')
     setError('')
+    setLastRun(null)
   }
 
   async function handleSend(event) {
@@ -267,7 +384,9 @@ export default function Chat() {
     if (!text || loading || !activeConversation || connection.status !== 'online') return
 
     const conversationId = activeConversation.id
-    const effort = chooseReasoningEffort(text)
+    const selectedMode = experienceMode
+    const selectedProfile = profile
+    const effort = chooseReasoningEffort(text, selectedMode, profileKey)
     const nextMessages = [...activeConversation.messages, { role: 'user', content: text }]
     const firstUserMessage = !activeConversation.messages.some(({ role }) => role === 'user')
     const controller = new AbortController()
@@ -282,16 +401,21 @@ export default function Chat() {
     }))
     setInput('')
     setError('')
+    setLastRun(null)
     setActiveEffort(effort)
     setLoading(true)
 
     try {
-      const headers = { 'Content-Type': 'application/json' }
+      const headers = { 'Content-Type': 'application/json; charset=utf-8' }
       if (IS_CLOUD && accessToken.trim()) headers.Authorization = `Bearer ${accessToken.trim()}`
 
       const body = {
-        messages: buildApiMessages(nextMessages),
+        messages: buildApiMessages(nextMessages, selectedProfile.contextMessages),
         reasoning_effort: effort,
+      }
+
+      if (IS_CLOUD && selectedMode === 'agent') {
+        body.max_steps = selectedProfile.maxSteps
       }
 
       if (!IS_CLOUD) {
@@ -301,7 +425,7 @@ export default function Chat() {
         body.max_tokens = Number.isFinite(MAX_TOKENS) ? MAX_TOKENS : 1024
       }
 
-      const response = await fetch(API_URL, {
+      const response = await fetch(activeApiUrl, {
         method: 'POST',
         headers,
         signal: controller.signal,
@@ -333,7 +457,13 @@ export default function Chat() {
         messages: [...conversation.messages, { role: 'assistant', content }],
         updatedAt: Date.now(),
       }))
-      setConnection({ status: 'online', message: IS_CLOUD ? 'NOXAS conectada' : 'Ollama conectado' })
+      setLastRun(normalizeRunMetadata(data, selectedMode, selectedProfile, effort))
+      setConnection({
+        status: 'online',
+        message: IS_CLOUD
+          ? (selectedMode === 'agent' ? 'Agente conectado' : 'Chat conectado')
+          : 'Ollama conectado',
+      })
     } catch (requestError) {
       const message = requestError instanceof Error ? requestError.message : 'No se pudo contactar con la IA.'
       const reason = controller.signal.reason
@@ -381,7 +511,9 @@ export default function Chat() {
             <div className="min-w-0">
               <h2 className="truncate text-base font-bold sm:text-lg">{activeConversation?.title || 'Nueva consulta'}</h2>
               <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                {IS_CLOUD ? 'Modo nube' : 'Modo local'} · {MODEL} · razonamiento adaptativo
+                {IS_CLOUD
+                  ? `${experienceMode === 'agent' ? 'Agente supervisado' : 'Chat directo'} · ${MODEL} · perfil ${profile.label}`
+                  : `Modo local · ${MODEL} · perfil ${profile.label}`}
               </p>
             </div>
 
@@ -412,6 +544,81 @@ export default function Chat() {
               </button>
             </div>
           </div>
+
+          <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Experiencia</p>
+              <div className="grid grid-cols-2 rounded-2xl bg-slate-100 p-1 dark:bg-slate-800">
+                {['chat', 'agent'].map((mode) => {
+                  const disabled = !IS_CLOUD && mode === 'agent'
+                  const selected = experienceMode === mode
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={disabled || loading}
+                      onClick={() => changeExperienceMode(mode)}
+                      className={`rounded-xl px-3 py-2 text-xs font-bold transition ${
+                        selected
+                          ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-950 dark:text-cyan-300'
+                          : 'text-slate-500 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-400 dark:hover:text-white'
+                      }`}
+                    >
+                      {mode === 'agent' ? 'Agente' : 'Chat'}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Consumo</p>
+              <div className="grid grid-cols-3 rounded-2xl bg-slate-100 p-1 dark:bg-slate-800">
+                {Object.entries(RUN_PROFILES).map(([key, item]) => {
+                  const selected = profileKey === key
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      disabled={loading}
+                      onClick={() => changeProfile(key)}
+                      className={`rounded-xl px-2 py-2 text-xs font-bold transition ${
+                        selected
+                          ? 'bg-white text-cyan-700 shadow-sm dark:bg-slate-950 dark:text-cyan-300'
+                          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                      }`}
+                    >
+                      {item.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {experienceMode === 'agent'
+              ? `${profile.description} Las escrituras siguen requiriendo aprobación.`
+              : `${profile.description} Chat responde sin ejecutar herramientas.`}
+          </p>
+
+          {lastRun && (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-300">
+              <span><strong>Última ejecución:</strong> {lastRun.mode === 'agent' ? 'Agente' : 'Chat'} · {lastRun.profile}</span>
+              <span>{reasoningLabel(lastRun.effort)}</span>
+              {lastRun.steps > 0 && <span>{lastRun.steps} pasos</span>}
+              {lastRun.toolCalls > 0 && <span>{lastRun.toolCalls} herramientas</span>}
+              {lastRun.totalTokens !== null && <span>{lastRun.totalTokens} tokens</span>}
+              {lastRun.reasoningTokens !== null && <span>{lastRun.reasoningTokens} de razonamiento</span>}
+              {lastRun.calls > 1 && <span>{lastRun.calls} llamadas al modelo</span>}
+            </div>
+          )}
+
+          {lastRun?.approvalRequired && (
+            <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
+              <strong>Acción propuesta, no ejecutada:</strong> {lastRun.approvalRequired.description}
+            </div>
+          )}
 
           {IS_CLOUD && showSecurity && (
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/60">
@@ -453,7 +660,7 @@ export default function Chat() {
 
           {!hasUserMessages && !error && (
             <div className="grid gap-2 pt-2 sm:grid-cols-3">
-              {QUICK_PROMPTS.map((prompt) => (
+              {quickPrompts.map((prompt) => (
                 <button
                   key={prompt}
                   type="button"
@@ -469,7 +676,9 @@ export default function Chat() {
           {loading && (
             <div className="flex justify-start">
               <div className="rounded-2xl rounded-bl-md bg-slate-100 px-4 py-3 text-sm text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                {reasoningLabel(activeEffort)} · {elapsedSeconds}s
+                {experienceMode === 'agent'
+                  ? `agente supervisado · máximo ${profile.maxSteps} pasos · ${elapsedSeconds}s`
+                  : `${reasoningLabel(activeEffort)} · ${elapsedSeconds}s`}
               </div>
             </div>
           )}
@@ -497,7 +706,9 @@ export default function Chat() {
               }}
               rows={3}
               placeholder={connection.status === 'online'
-                ? 'Escribí una consulta, pegá un error o compartí un log...'
+                ? (experienceMode === 'agent'
+                    ? 'Describí un objetivo para analizarlo con herramientas...'
+                    : 'Escribí una consulta, pegá un error o compartí un log...')
                 : 'Esperando una conexión disponible...'}
               className="min-h-24 flex-1 resize-none rounded-2xl border border-slate-300 bg-white px-4 py-3 text-base outline-none transition focus:border-cyan-500 focus:ring-4 focus:ring-cyan-500/10 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 sm:text-sm"
             />
@@ -511,7 +722,7 @@ export default function Chat() {
             </button>
           </div>
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-            Enter envía. Shift + Enter agrega una línea. Cada conversación queda guardada sólo en este dispositivo.
+            Enter envía. Shift + Enter agrega una línea. En Agente, cada paso puede generar otra llamada al modelo. Las conversaciones quedan sólo en este dispositivo.
           </p>
         </form>
       </section>
