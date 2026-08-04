@@ -1,5 +1,5 @@
 const API_NAME = 'NOXAS Agent API'
-const API_VERSION = '1.0.0'
+const API_VERSION = '1.1.0'
 const DEFAULT_MODEL = process.env.XAS_AGENT_MODEL || process.env.XAS_CLOUD_MODEL || 'gpt-5.4-mini'
 const DEFAULT_MAX_STEPS = 5
 const HARD_MAX_STEPS = 8
@@ -33,8 +33,8 @@ const PROJECT_KNOWLEDGE = [
   {
     id: 'architecture-current',
     title: 'Arquitectura actual',
-    text: 'NOXAS usa React y Vite en el frontend, Netlify Functions en el backend y un endpoint /api/chat conectado a un proveedor compatible con Chat Completions.',
-    tags: ['arquitectura', 'react', 'vite', 'netlify', 'chat'],
+    text: 'NOXAS usa React y Vite en el frontend, Netlify Functions en el backend. El chat usa Chat Completions y el agente usa Responses API.',
+    tags: ['arquitectura', 'react', 'vite', 'netlify', 'chat', 'responses'],
   },
   {
     id: 'oracle-local',
@@ -59,74 +59,72 @@ const PROJECT_KNOWLEDGE = [
 const TOOL_DEFINITIONS = [
   {
     type: 'function',
-    function: {
-      name: 'search_project_knowledge',
-      description: 'Busca hechos conocidos y autorizados sobre el proyecto NOXAS.',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          query: { type: 'string', description: 'Tema o términos a buscar.' },
-        },
-        required: ['query'],
+    name: 'search_project_knowledge',
+    description: 'Busca hechos conocidos y autorizados sobre el proyecto NOXAS.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        query: { type: 'string', description: 'Tema o términos a buscar.' },
       },
+      required: ['query'],
     },
   },
   {
     type: 'function',
-    function: {
-      name: 'calculate',
-      description: 'Realiza una operación aritmética segura con números y operadores básicos.',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          expression: { type: 'string', description: 'Expresión con números, paréntesis y + - * / %.' },
-        },
-        required: ['expression'],
+    name: 'calculate',
+    description: 'Realiza una operación aritmética segura con números y operadores básicos.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        expression: { type: 'string', description: 'Expresión con números, paréntesis y + - * / %.' },
       },
+      required: ['expression'],
     },
   },
   {
     type: 'function',
-    function: {
-      name: 'inspect_runtime',
-      description: 'Devuelve capacidades y límites activos del agente, sin exponer secretos.',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {},
-      },
+    name: 'inspect_runtime',
+    description: 'Devuelve capacidades y límites activos del agente, sin exponer secretos.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {},
+      required: [],
     },
   },
   {
     type: 'function',
-    function: {
-      name: 'propose_action',
-      description: 'Registra una acción de escritura o externa que necesita aprobación humana antes de ejecutarse.',
-      parameters: {
-        type: 'object',
-        additionalProperties: false,
-        properties: {
-          action_type: {
-            type: 'string',
-            enum: ['CODE_CHANGE', 'DATABASE_WRITE', 'DEPLOY', 'EXTERNAL_MESSAGE', 'DELETE', 'INFRASTRUCTURE_CHANGE', 'OTHER'],
-          },
-          description: { type: 'string' },
-          risk: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'] },
-          reversible: { type: 'boolean' },
-          preview: { type: 'string', description: 'Resumen, comando o cambio previsto sin ejecutarlo.' },
+    name: 'propose_action',
+    description: 'Registra una acción de escritura o externa que necesita aprobación humana antes de ejecutarse.',
+    strict: true,
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        action_type: {
+          type: 'string',
+          enum: ['CODE_CHANGE', 'DATABASE_WRITE', 'DEPLOY', 'EXTERNAL_MESSAGE', 'DELETE', 'INFRASTRUCTURE_CHANGE', 'OTHER'],
         },
-        required: ['action_type', 'description', 'risk', 'reversible', 'preview'],
+        description: { type: 'string' },
+        risk: { type: 'string', enum: ['LOW', 'MEDIUM', 'HIGH'] },
+        reversible: { type: 'boolean' },
+        preview: { type: 'string', description: 'Resumen, comando o cambio previsto sin ejecutarlo.' },
       },
+      required: ['action_type', 'description', 'risk', 'reversible', 'preview'],
     },
   },
 ]
 
 function json(data, status = 200) {
-  return Response.json(data, {
+  return new Response(JSON.stringify(data), {
     status,
     headers: {
+      'Content-Type': 'application/json; charset=utf-8',
       'Cache-Control': 'no-store',
       'X-Content-Type-Options': 'nosniff',
       'X-NOXAS-Agent-Version': API_VERSION,
@@ -171,11 +169,11 @@ function resolveGateway() {
   return null
 }
 
-function chatCompletionsUrl(baseUrl) {
+function responsesUrl(baseUrl) {
   const normalized = baseUrl.replace(/\/+$/, '')
   return /\/v1$/i.test(normalized)
-    ? `${normalized}/chat/completions`
-    : `${normalized}/v1/chat/completions`
+    ? `${normalized}/responses`
+    : `${normalized}/v1/responses`
 }
 
 function tokenize(value) {
@@ -225,12 +223,14 @@ function inspectRuntime() {
   return {
     api: API_NAME,
     version: API_VERSION,
+    providerApi: 'responses',
     model: DEFAULT_MODEL,
     mode: 'SUPERVISED',
     maximumSteps: HARD_MAX_STEPS,
+    supportedReasoningEfforts: Array.from(ALLOWED_EFFORTS),
     writeActionsRequireApproval: true,
     persistentOracleMemoryConnected: false,
-    tools: TOOL_DEFINITIONS.map((tool) => tool.function.name),
+    tools: TOOL_DEFINITIONS.map((tool) => tool.name),
   }
 }
 
@@ -264,21 +264,53 @@ function parseToolArguments(raw) {
   }
 }
 
-async function callModel({ gateway, messages, reasoningEffort, tools = TOOL_DEFINITIONS }) {
-  const upstream = await fetch(chatCompletionsUrl(gateway.baseUrl), {
+function extractResponseText(output) {
+  if (!Array.isArray(output)) return ''
+
+  return output
+    .filter((item) => item?.type === 'message')
+    .flatMap((item) => Array.isArray(item.content) ? item.content : [])
+    .filter((item) => item?.type === 'output_text' && typeof item.text === 'string')
+    .map((item) => item.text.trim())
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+}
+
+function summarizeUsage(usage) {
+  return usage.reduce((summary, item) => {
+    summary.calls += 1
+    summary.inputTokens += Number(item?.input_tokens || 0)
+    summary.outputTokens += Number(item?.output_tokens || 0)
+    summary.reasoningTokens += Number(item?.output_tokens_details?.reasoning_tokens || 0)
+    summary.totalTokens += Number(item?.total_tokens || 0)
+    return summary
+  }, {
+    calls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    totalTokens: 0,
+  })
+}
+
+async function callModel({ gateway, input, reasoningEffort, tools = TOOL_DEFINITIONS }) {
+  const upstream = await fetch(responsesUrl(gateway.baseUrl), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${gateway.apiKey}`,
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
+      Accept: 'application/json',
     },
     signal: AbortSignal.timeout(55000),
     body: JSON.stringify({
       model: DEFAULT_MODEL,
-      messages,
+      instructions: SYSTEM_PROMPT,
+      input,
       tools: tools?.length ? tools : undefined,
       tool_choice: tools?.length ? 'auto' : undefined,
-      reasoning_effort: reasoningEffort,
-      max_completion_tokens: Number.isFinite(MAX_OUTPUT_TOKENS) ? MAX_OUTPUT_TOKENS : 1400,
+      reasoning: { effort: reasoningEffort },
+      max_output_tokens: Number.isFinite(MAX_OUTPUT_TOKENS) ? MAX_OUTPUT_TOKENS : 1400,
       store: false,
     }),
   })
@@ -295,51 +327,75 @@ async function callModel({ gateway, messages, reasoningEffort, tools = TOOL_DEFI
     throw new Error(data?.error?.message || `El proveedor devolvió HTTP ${upstream.status}.`)
   }
 
-  const message = data?.choices?.[0]?.message
-  if (!message) throw new Error('El proveedor respondió sin mensaje.')
-  return { message, usage: data.usage || null, model: data.model || DEFAULT_MODEL }
+  if (!Array.isArray(data.output)) {
+    throw new Error('El proveedor respondió sin una salida válida.')
+  }
+
+  if (data.status === 'failed') {
+    throw new Error(data?.error?.message || 'El proveedor no pudo completar la respuesta.')
+  }
+
+  return {
+    output: data.output,
+    content: extractResponseText(data.output),
+    usage: data.usage || null,
+    model: data.model || DEFAULT_MODEL,
+    responseId: data.id || null,
+    status: data.status || null,
+    incompleteDetails: data.incomplete_details || null,
+  }
 }
 
 async function runAgent({ gateway, messages, reasoningEffort, maxSteps }) {
-  const conversation = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages]
+  const input = messages.map(({ role, content }) => ({ role, content }))
   const trace = []
   const usage = []
   let approvalRequired = null
   let modelName = DEFAULT_MODEL
 
   for (let step = 1; step <= maxSteps; step += 1) {
-    const result = await callModel({ gateway, messages: conversation, reasoningEffort })
-    const assistantMessage = result.message
+    const result = await callModel({ gateway, input, reasoningEffort })
     modelName = result.model
     if (result.usage) usage.push(result.usage)
 
-    const toolCalls = Array.isArray(assistantMessage.tool_calls) ? assistantMessage.tool_calls : []
+    const toolCalls = result.output.filter((item) => item?.type === 'function_call')
     trace.push({
       step,
       type: toolCalls.length ? 'TOOL_SELECTION' : 'FINAL_RESPONSE',
-      tools: toolCalls.map((call) => call.function?.name).filter(Boolean),
+      tools: toolCalls.map((call) => call.name).filter(Boolean),
+      responseId: result.responseId,
+      status: result.status,
     })
 
     if (!toolCalls.length) {
-      const content = typeof assistantMessage.content === 'string' ? assistantMessage.content.trim() : ''
-      if (!content) throw new Error('El agente finalizó sin contenido.')
-      return { content, trace, usage, modelName, approvalRequired }
+      if (!result.content) {
+        const reason = result.incompleteDetails?.reason
+        throw new Error(reason
+          ? `El agente finalizó sin contenido (${reason}).`
+          : 'El agente finalizó sin contenido.')
+      }
+      return {
+        content: result.content,
+        trace,
+        usage,
+        usageSummary: summarizeUsage(usage),
+        modelName,
+        approvalRequired,
+      }
     }
 
-    conversation.push({
-      role: 'assistant',
-      content: assistantMessage.content || null,
-      tool_calls: toolCalls,
-    })
+    // Responses API requiere conservar los elementos de salida, incluidos los
+    // elementos de razonamiento, antes de agregar los resultados de funciones.
+    input.push(...result.output)
 
     for (const toolCall of toolCalls) {
-      const toolName = toolCall.function?.name
+      const toolName = toolCall.name
       const handler = TOOL_HANDLERS[toolName]
       let output
 
       try {
         if (!handler) throw new Error(`Herramienta no permitida: ${toolName}`)
-        const args = parseToolArguments(toolCall.function?.arguments)
+        const args = parseToolArguments(toolCall.arguments)
         output = await handler(args)
         if (toolName === 'propose_action') approvalRequired = output.proposal
       } catch (error) {
@@ -349,31 +405,38 @@ async function runAgent({ gateway, messages, reasoningEffort, maxSteps }) {
       }
 
       trace.push({ step, type: 'TOOL_RESULT', tool: toolName, ok: !output?.error })
-      conversation.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: JSON.stringify(output),
+      input.push({
+        type: 'function_call_output',
+        call_id: toolCall.call_id,
+        output: JSON.stringify(output),
       })
     }
   }
 
-  conversation.push({
-    role: 'system',
+  input.push({
+    role: 'developer',
     content: 'Alcanzaste el límite de pasos. Entregá una conclusión breve con lo comprobado, lo pendiente y cualquier aprobación requerida. No uses herramientas.',
   })
 
   const finalResult = await callModel({
     gateway,
-    messages: conversation,
-    reasoningEffort: 'low',
+    input,
+    reasoningEffort: 'none',
     tools: [],
   })
   if (finalResult.usage) usage.push(finalResult.usage)
-  const content = typeof finalResult.message.content === 'string'
-    ? finalResult.message.content.trim()
-    : 'El agente alcanzó el límite de pasos sin producir una conclusión.'
 
-  return { content, trace, usage, modelName: finalResult.model, approvalRequired }
+  const content = finalResult.content
+    || 'El agente alcanzó el límite de pasos sin producir una conclusión.'
+
+  return {
+    content,
+    trace,
+    usage,
+    usageSummary: summarizeUsage(usage),
+    modelName: finalResult.model,
+    approvalRequired,
+  }
 }
 
 export default async function handler(request) {
@@ -385,12 +448,14 @@ export default async function handler(request) {
       api: { name: API_NAME, version: API_VERSION, endpoint: '/api/agent' },
       assistant: 'NOXAS',
       mode: 'SUPERVISED',
+      providerApi: 'responses',
       model: DEFAULT_MODEL,
       credentialSource: gateway?.source || null,
       oracleMemoryConnected: false,
-      tools: TOOL_DEFINITIONS.map((tool) => tool.function.name),
+      supportedReasoningEfforts: Array.from(ALLOWED_EFFORTS),
+      tools: TOOL_DEFINITIONS.map((tool) => tool.name),
       message: gateway
-        ? 'NOXAS Agent v1 está disponible en modo supervisado.'
+        ? 'NOXAS Agent v1.1 está disponible con razonamiento y herramientas mediante Responses API.'
         : 'No hay credenciales configuradas para el proveedor de IA.',
     }, gateway ? 200 : 503)
   }
@@ -420,7 +485,10 @@ export default async function handler(request) {
     }
 
     const requestedSteps = Number(body.max_steps || DEFAULT_MAX_STEPS)
-    const maxSteps = Math.min(Math.max(Number.isFinite(requestedSteps) ? requestedSteps : DEFAULT_MAX_STEPS, 1), HARD_MAX_STEPS)
+    const maxSteps = Math.min(
+      Math.max(Number.isFinite(requestedSteps) ? requestedSteps : DEFAULT_MAX_STEPS, 1),
+      HARD_MAX_STEPS,
+    )
     const reasoningEffort = ALLOWED_EFFORTS.has(body.reasoning_effort)
       ? body.reasoning_effort
       : 'medium'
@@ -431,24 +499,30 @@ export default async function handler(request) {
       api: { name: API_NAME, version: API_VERSION, endpoint: '/api/agent' },
       assistant: 'NOXAS',
       mode: 'SUPERVISED',
+      providerApi: 'responses',
+      reasoningEffort,
       choices: [{ message: { role: 'assistant', content: result.content } }],
       model: result.modelName,
       approvalRequired: result.approvalRequired,
       trace: result.trace,
       usage: result.usage,
+      usageSummary: result.usageSummary,
       credentialSource: gateway.source,
     })
   } catch (error) {
     const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError'
+    const invalidJson = error instanceof SyntaxError
     return json({
       error: {
         message: timedOut
           ? 'El agente superó el tiempo disponible. Reducí el objetivo o la cantidad de pasos.'
-          : error instanceof Error
-            ? error.message
-            : 'No se pudo ejecutar el agente.',
+          : invalidJson
+            ? 'El cuerpo JSON de la solicitud es inválido.'
+            : error instanceof Error
+              ? error.message
+              : 'No se pudo ejecutar el agente.',
       },
-    }, timedOut ? 504 : 500)
+    }, timedOut ? 504 : invalidJson ? 400 : 500)
   }
 }
 
