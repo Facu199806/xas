@@ -73,14 +73,19 @@ CREATE OR REPLACE PACKAGE BODY noxas_memory_api_pkg AS
     c_api_version CONSTANT VARCHAR2(20) := '1.0.0';
 
     FUNCTION error_json(p_code VARCHAR2, p_message VARCHAR2) RETURN CLOB IS
+        l_payload CLOB;
     BEGIN
-        RETURN JSON_OBJECT(
-            'error' VALUE JSON_OBJECT(
-                'code' VALUE p_code,
-                'message' VALUE p_message
-            )
-            RETURNING CLOB
-        );
+        SELECT JSON_OBJECT(
+                   'error' VALUE JSON_OBJECT(
+                       'code' VALUE p_code,
+                       'message' VALUE p_message
+                   )
+                   RETURNING CLOB
+               )
+          INTO l_payload
+          FROM dual;
+
+        RETURN l_payload;
     END;
 
     FUNCTION is_hex32(p_value VARCHAR2) RETURN BOOLEAN IS
@@ -162,15 +167,17 @@ CREATE OR REPLACE PACKAGE BODY noxas_memory_api_pkg AS
         SELECT COUNT(*) INTO l_count FROM noxas_memory WHERE memory_status <> 'DELETED';
 
         p_http_status := 200;
-        p_payload := JSON_OBJECT(
-            'ok' VALUE 'true' FORMAT JSON,
-            'api' VALUE c_api_name,
-            'version' VALUE c_api_version,
-            'schema' VALUE SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA'),
-            'container' VALUE SYS_CONTEXT('USERENV', 'CON_NAME'),
-            'memoryCount' VALUE l_count
-            RETURNING CLOB
-        );
+        SELECT JSON_OBJECT(
+                   'ok' VALUE 'true' FORMAT JSON,
+                   'api' VALUE c_api_name,
+                   'version' VALUE c_api_version,
+                   'schema' VALUE SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA'),
+                   'container' VALUE SYS_CONTEXT('USERENV', 'CON_NAME'),
+                   'memoryCount' VALUE l_count
+                   RETURNING CLOB
+               )
+          INTO p_payload
+          FROM dual;
     EXCEPTION
         WHEN OTHERS THEN
             p_http_status := 500;
@@ -201,7 +208,7 @@ CREATE OR REPLACE PACKAGE BODY noxas_memory_api_pkg AS
 
         l_scope := CASE WHEN p_scope IS NULL THEN NULL ELSE UPPER(TRIM(p_scope)) END;
         l_type := CASE WHEN p_type IS NULL THEN NULL ELSE UPPER(TRIM(p_type)) END;
-        l_status := CASE WHEN p_status IS NULL THEN NULL ELSE UPPER(TRIM(p_status)) END;
+        l_status := CASE WHEN p_status IS NULL THEN 'ACTIVE' ELSE UPPER(TRIM(p_status)) END;
 
         IF l_scope IS NOT NULL AND l_scope NOT IN ('USER', 'PROJECT', 'CONVERSATION', 'SYSTEM') THEN
             p_http_status := 400;
