@@ -244,7 +244,8 @@ BEGIN
     SELECT COUNT(*)
       INTO v_count
       FROM noxas_agent_run
-     WHERE objective_text IN ('009 test - run A', '009 test - run B');
+     WHERE DBMS_LOB.COMPARE(objective_text, TO_CLOB('009 test - run A')) = 0
+        OR DBMS_LOB.COMPARE(objective_text, TO_CLOB('009 test - run B')) = 0;
 
     IF v_count <> 0 THEN
         RAISE_APPLICATION_ERROR(-20097, 'La prueba 009 dejo datos ficticios sin limpiar.');
