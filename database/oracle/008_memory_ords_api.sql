@@ -111,7 +111,7 @@ BEGIN
         p_scope       => :scope,
         p_type        => :type,
         p_status      => :status,
-        p_limit       => :limit,
+        p_limit       => :max_results,
         p_http_status => l_status,
         p_payload     => l_payload
     );
