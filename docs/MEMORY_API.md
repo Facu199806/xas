@@ -146,10 +146,12 @@ curl -i \
 
 ## Listar memorias activas
 
+`limit` es un query parameter reservado por ORDS, por lo que NOXAS usa `max_results` para controlar el máximo devuelto por la API.
+
 ```bash
 curl -i \
   -H 'Authorization: Bearer ACCESS_TOKEN' \
-  'http://localhost:8080/ords/noxas/memory/v1/memories/?status=ACTIVE&limit=20'
+  'http://localhost:8080/ords/noxas/memory/v1/memories/?status=ACTIVE&max_results=20'
 ```
 
 ## Archivar
