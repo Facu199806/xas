@@ -446,7 +446,7 @@ END;
 /
 
 PROMPT ============================================================
-PROMPT 6. PRUEBA DE AISLAMIENTO ENTRE RUNS (DIAGNOSTICO)
+PROMPT 6. PRUEBA DE AISLAMIENTO ENTRE RUNS (VALIDACION)
 PROMPT ============================================================
 
 SAVEPOINT noxas_cross_run_test;
@@ -468,35 +468,32 @@ INSERT INTO noxas_agent_step (
     1, 'PLAN'
 );
 
--- El modelo actual permite asociar un tool_call del run A con un step del run B,
--- porque valida ambas FKs por separado pero no valida el par (run_id, step_id).
-INSERT INTO noxas_tool_call (
-    tool_call_id, agent_run_id, agent_step_id,
-    tool_name, tool_category
-) VALUES (
-    HEXTORAW('00000000000000000000000000000732'),
-    HEXTORAW('00000000000000000000000000000703'),
-    HEXTORAW('00000000000000000000000000000731'),
-    'cross-run-diagnostic', 'SYSTEM'
-);
-
-DECLARE
-    v_cross_run NUMBER;
+-- La FK compuesta debe impedir que un TOOL_CALL de un RUN
+-- apunte a un STEP perteneciente a otro RUN.
 BEGIN
-    SELECT COUNT(*)
-      INTO v_cross_run
-      FROM noxas_tool_call t
-      JOIN noxas_agent_step s ON s.agent_step_id = t.agent_step_id
-     WHERE t.tool_call_id = HEXTORAW('00000000000000000000000000000732')
-       AND t.agent_run_id <> s.agent_run_id;
+    INSERT INTO noxas_tool_call (
+        tool_call_id, agent_run_id, agent_step_id,
+        tool_name, tool_category
+    ) VALUES (
+        HEXTORAW('00000000000000000000000000000732'),
+        HEXTORAW('00000000000000000000000000000703'),
+        HEXTORAW('00000000000000000000000000000731'),
+        'cross-run-diagnostic', 'SYSTEM'
+    );
 
-    IF v_cross_run = 1 THEN
-        DBMS_OUTPUT.PUT_LINE(
-            'ADVERTENCIA CONFIRMADA - el esquema permite TOOL_CALL y STEP de runs distintos.');
-    ELSE
-        RAISE_APPLICATION_ERROR(-20078,
-            'Resultado inesperado en la prueba de aislamiento entre runs.');
-    END IF;
+    RAISE_APPLICATION_ERROR(
+        -20078,
+        'FALLO - la FK compuesta permitio TOOL_CALL y STEP de runs distintos.'
+    );
+EXCEPTION
+    WHEN OTHERS THEN
+        IF SQLCODE = -2291 THEN
+            DBMS_OUTPUT.PUT_LINE(
+                'OK - aislamiento entre runs rechazo ORA-02291.'
+            );
+        ELSE
+            RAISE;
+        END IF;
 END;
 /
 
