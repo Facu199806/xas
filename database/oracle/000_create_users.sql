@@ -56,7 +56,8 @@ CREATE USER NOXAS_DEV
     ACCOUNT UNLOCK
     CONTAINER = CURRENT;
 
-GRANT CREATE SESSION, CREATE TABLE TO NOXAS_DEV;
+-- CREATE PROCEDURE permite crear procedures, functions y packages en el propio esquema.
+GRANT CREATE SESSION, CREATE TABLE, CREATE PROCEDURE TO NOXAS_DEV;
 
 CREATE ROLE NOXAS_APP_ROLE;
 
@@ -83,6 +84,12 @@ SELECT username, account_status, default_tablespace, temporary_tablespace
 FROM dba_users
 WHERE username IN ('NOXAS_DEV', 'NOXAS_APP')
 ORDER BY username;
+
+SELECT grantee, privilege
+FROM dba_sys_privs
+WHERE grantee = 'NOXAS_DEV'
+  AND privilege IN ('CREATE SESSION', 'CREATE TABLE', 'CREATE PROCEDURE')
+ORDER BY privilege;
 
 SELECT grantee, granted_role, default_role
 FROM dba_role_privs

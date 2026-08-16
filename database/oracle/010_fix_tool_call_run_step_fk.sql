@@ -1,5 +1,5 @@
 -- NOXAS Agent v1 - Parche de integridad TOOL_CALL -> STEP/RUN
--- 009: impide que un NOXAS_TOOL_CALL apunte a un AGENT_STEP de otro AGENT_RUN.
+-- 010: impide que un NOXAS_TOOL_CALL apunte a un AGENT_STEP de otro AGENT_RUN.
 -- Ejecutar con F5 / Run Script conectado como NOXAS_DEV al servicio FREEPDB1.
 -- Requiere 005_agent_schema.sql aplicado previamente.
 
@@ -8,7 +8,7 @@ SET VERIFY OFF
 WHENEVER SQLERROR EXIT SQL.SQLCODE ROLLBACK
 
 PROMPT ============================================================
-PROMPT 009 - REFUERZO DE INTEGRIDAD TOOL_CALL / RUN / STEP
+PROMPT 010 - REFUERZO DE INTEGRIDAD TOOL_CALL / RUN / STEP
 PROMPT ============================================================
 
 DECLARE
@@ -17,11 +17,11 @@ DECLARE
     v_count     NUMBER;
 BEGIN
     IF v_container <> 'FREEPDB1' THEN
-        RAISE_APPLICATION_ERROR(-20091, '009 debe ejecutarse dentro de FREEPDB1.');
+        RAISE_APPLICATION_ERROR(-20101, '010 debe ejecutarse dentro de FREEPDB1.');
     END IF;
 
     IF v_user <> 'NOXAS_DEV' THEN
-        RAISE_APPLICATION_ERROR(-20092, '009 debe ejecutarse conectado como NOXAS_DEV.');
+        RAISE_APPLICATION_ERROR(-20102, '010 debe ejecutarse conectado como NOXAS_DEV.');
     END IF;
 
     SELECT COUNT(*)
@@ -30,7 +30,7 @@ BEGIN
      WHERE table_name IN ('NOXAS_AGENT_RUN', 'NOXAS_AGENT_STEP', 'NOXAS_TOOL_CALL');
 
     IF v_count <> 3 THEN
-        RAISE_APPLICATION_ERROR(-20093, 'Faltan tablas requeridas del runtime. Ejecutar 005 primero.');
+        RAISE_APPLICATION_ERROR(-20103, 'Faltan tablas requeridas del runtime. Ejecutar 005 primero.');
     END IF;
 
     DBMS_OUTPUT.PUT_LINE('OK - usuario, contenedor y tablas requeridas.');
@@ -57,9 +57,9 @@ BEGIN
 
     IF v_mismatches > 0 THEN
         RAISE_APPLICATION_ERROR(
-            -20094,
+            -20104,
             'Existen ' || v_mismatches ||
-            ' TOOL_CALL con STEP perteneciente a otro RUN. Corregir datos antes de aplicar 009.'
+            ' TOOL_CALL con STEP perteneciente a otro RUN. Corregir datos antes de aplicar 010.'
         );
     END IF;
 
@@ -168,7 +168,7 @@ BEGIN
        AND status = 'ENABLED';
 
     IF v_uq <> 1 OR v_fk <> 1 THEN
-        RAISE_APPLICATION_ERROR(-20095, 'Las constraints nuevas no quedaron habilitadas correctamente.');
+        RAISE_APPLICATION_ERROR(-20105, 'Las constraints nuevas no quedaron habilitadas correctamente.');
     END IF;
 
     DBMS_OUTPUT.PUT_LINE('OK - UQ y FK compuesta habilitadas.');
@@ -179,7 +179,7 @@ PROMPT
 PROMPT 4. PRUEBA NEGATIVA DE AISLAMIENTO ENTRE RUNS
 PROMPT ============================================================
 
-SAVEPOINT noxas_009_isolation_test;
+SAVEPOINT noxas_010_isolation_test;
 
 DECLARE
     v_run_a  RAW(16) := SYS_GUID();
@@ -190,14 +190,14 @@ BEGIN
         agent_run_id, objective_text, run_status, autonomy_level,
         maximum_steps, completed_steps
     ) VALUES (
-        v_run_a, '009 test - run A', 'RUNNING', 'SUPERVISED', 2, 0
+        v_run_a, '010 test - run A', 'RUNNING', 'SUPERVISED', 2, 0
     );
 
     INSERT INTO noxas_agent_run (
         agent_run_id, objective_text, run_status, autonomy_level,
         maximum_steps, completed_steps
     ) VALUES (
-        v_run_b, '009 test - run B', 'RUNNING', 'SUPERVISED', 2, 0
+        v_run_b, '010 test - run B', 'RUNNING', 'SUPERVISED', 2, 0
     );
 
     INSERT INTO noxas_agent_step (
@@ -205,7 +205,7 @@ BEGIN
         step_status, summary_text
     ) VALUES (
         v_step_a, v_run_a, 1, 'TOOL_SELECTION',
-        'COMPLETED', '009 test - step perteneciente al run A'
+        'COMPLETED', '010 test - step perteneciente al run A'
     );
 
     BEGIN
@@ -218,7 +218,7 @@ BEGIN
         );
 
         RAISE_APPLICATION_ERROR(
-            -20096,
+            -20106,
             'FALLO - la FK compuesta permitio TOOL_CALL y STEP de runs distintos.'
         );
     EXCEPTION
@@ -232,7 +232,7 @@ BEGIN
 END;
 /
 
-ROLLBACK TO noxas_009_isolation_test;
+ROLLBACK TO noxas_010_isolation_test;
 
 PROMPT
 PROMPT 5. VERIFICACION DE LIMPIEZA
@@ -244,17 +244,17 @@ BEGIN
     SELECT COUNT(*)
       INTO v_count
       FROM noxas_agent_run
-     WHERE DBMS_LOB.COMPARE(objective_text, TO_CLOB('009 test - run A')) = 0
-        OR DBMS_LOB.COMPARE(objective_text, TO_CLOB('009 test - run B')) = 0;
+     WHERE DBMS_LOB.COMPARE(objective_text, TO_CLOB('010 test - run A')) = 0
+        OR DBMS_LOB.COMPARE(objective_text, TO_CLOB('010 test - run B')) = 0;
 
     IF v_count <> 0 THEN
-        RAISE_APPLICATION_ERROR(-20097, 'La prueba 009 dejo datos ficticios sin limpiar.');
+        RAISE_APPLICATION_ERROR(-20107, 'La prueba 010 dejo datos ficticios sin limpiar.');
     END IF;
 
     DBMS_OUTPUT.PUT_LINE('OK - prueba reversible; no quedaron datos ficticios.');
-    DBMS_OUTPUT.PUT_LINE('009 - integridad TOOL_CALL/RUN/STEP reforzada correctamente.');
+    DBMS_OUTPUT.PUT_LINE('010 - integridad TOOL_CALL/RUN/STEP reforzada correctamente.');
 END;
 /
 
 PROMPT
-PROMPT 009_fix_tool_call_run_step_fk.sql finalizado correctamente.
+PROMPT 010_fix_tool_call_run_step_fk.sql finalizado correctamente.
