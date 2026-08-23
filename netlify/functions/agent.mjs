@@ -1,5 +1,12 @@
+import {
+  getMemory,
+  getMemoryConfigurationStatus,
+  loadActiveAgentMemories,
+  memoryHealth,
+} from '../lib/memory-client.mjs'
+
 const API_NAME = 'NOXAS Agent API'
-const API_VERSION = '1.1.0'
+const API_VERSION = '1.2.0'
 const DEFAULT_MODEL = process.env.XAS_AGENT_MODEL || process.env.XAS_CLOUD_MODEL || 'gpt-5.4-mini'
 const DEFAULT_MAX_STEPS = 5
 const HARD_MAX_STEPS = 8
@@ -60,7 +67,7 @@ const TOOL_DEFINITIONS = [
   {
     type: 'function',
     name: 'search_project_knowledge',
-    description: 'Busca hechos conocidos y autorizados sobre el proyecto NOXAS.',
+    description: 'Busca hechos autorizados del proyecto y memoria Oracle activa en scopes PROJECT y SYSTEM.',
     strict: true,
     parameters: {
       type: 'object',
@@ -88,7 +95,7 @@ const TOOL_DEFINITIONS = [
   {
     type: 'function',
     name: 'inspect_runtime',
-    description: 'Devuelve capacidades y límites activos del agente, sin exponer secretos.',
+    description: 'Devuelve capacidades y límites activos del agente, incluido el estado de Memory API, sin exponer secretos.',
     strict: true,
     parameters: {
       type: 'object',
@@ -177,7 +184,7 @@ function responsesUrl(baseUrl) {
 }
 
 function tokenize(value) {
-  return value
+  return String(value || '')
     .toLocaleLowerCase('es-AR')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -185,22 +192,98 @@ function tokenize(value) {
     .filter(Boolean)
 }
 
-function searchProjectKnowledge({ query }) {
-  const terms = tokenize(String(query || '')).slice(0, 12)
-  if (!terms.length) return { matches: [] }
+function scoreTerms(terms, value) {
+  const haystack = tokenize(value)
+  return terms.reduce(
+    (total, term) => total + haystack.filter((word) => word.includes(term)).length,
+    0,
+  )
+}
 
-  const matches = PROJECT_KNOWLEDGE
-    .map((item) => {
-      const haystack = tokenize(`${item.title} ${item.text} ${item.tags.join(' ')}`)
-      const score = terms.reduce((total, term) => total + haystack.filter((word) => word.includes(term)).length, 0)
-      return { ...item, score }
-    })
-    .filter((item) => item.score > 0)
+function localKnowledgeCandidates(terms) {
+  return PROJECT_KNOWLEDGE.map((item) => ({
+    source: 'local',
+    score: scoreTerms(terms, `${item.title} ${item.text} ${item.tags.join(' ')}`),
+    item,
+  })).filter(({ score }) => score > 0)
+}
+
+function oracleMemoryCandidates(terms, memoryState) {
+  if (!Array.isArray(memoryState?.items)) return []
+
+  return memoryState.items
+    .filter((item) => item?.scope === 'PROJECT' || item?.scope === 'SYSTEM')
+    .map((item) => ({
+      source: 'oracle-memory',
+      score: scoreTerms(
+        terms,
+        `${item.title || ''} ${item.contentPreview || ''} ${item.scope || ''} ${item.type || ''}`,
+      ),
+      item,
+    }))
+    .filter(({ score }) => score > 0)
+}
+
+async function hydrateOracleMemory(candidate) {
+  const preview = {
+    id: `oracle:${candidate.item.memoryId}`,
+    memoryId: candidate.item.memoryId,
+    title: candidate.item.title,
+    text: candidate.item.contentPreview || '',
+    tags: [candidate.item.scope, candidate.item.type, 'oracle-memory'].filter(Boolean),
+    source: 'oracle-memory',
+    scope: candidate.item.scope,
+    type: candidate.item.type,
+    degraded: true,
+  }
+
+  try {
+    const memory = await getMemory(candidate.item.memoryId)
+    return {
+      id: `oracle:${memory.memoryId || candidate.item.memoryId}`,
+      memoryId: memory.memoryId || candidate.item.memoryId,
+      title: memory.title || candidate.item.title,
+      text: memory.contentText || candidate.item.contentPreview || '',
+      tags: [memory.scope || candidate.item.scope, memory.type || candidate.item.type, 'oracle-memory'].filter(Boolean),
+      source: 'oracle-memory',
+      scope: memory.scope || candidate.item.scope,
+      type: memory.type || candidate.item.type,
+      confidenceScore: memory.confidenceScore ?? candidate.item.confidenceScore ?? null,
+      importanceScore: memory.importanceScore ?? candidate.item.importanceScore ?? null,
+      degraded: false,
+    }
+  } catch {
+    return preview
+  }
+}
+
+async function searchProjectKnowledge({ query }, memoryState) {
+  const terms = tokenize(query).slice(0, 12)
+  if (!terms.length) return { query, matches: [] }
+
+  const candidates = [
+    ...localKnowledgeCandidates(terms),
+    ...oracleMemoryCandidates(terms, memoryState),
+  ]
     .sort((a, b) => b.score - a.score)
     .slice(0, 4)
-    .map(({ score, ...item }) => item)
 
-  return { query, matches }
+  const matches = await Promise.all(candidates.map(async (candidate) => {
+    if (candidate.source === 'oracle-memory') {
+      return hydrateOracleMemory(candidate)
+    }
+
+    return {
+      ...candidate.item,
+      source: 'local',
+    }
+  }))
+
+  return {
+    query,
+    matches,
+    memory: publicMemoryStatus(memoryState),
+  }
 }
 
 function calculate({ expression }) {
@@ -219,7 +302,18 @@ function calculate({ expression }) {
   return { expression: input, result }
 }
 
-function inspectRuntime() {
+function publicMemoryStatus(memoryState) {
+  return {
+    configured: Boolean(memoryState?.configured),
+    connected: Boolean(memoryState?.connected),
+    loadedItems: Array.isArray(memoryState?.items) ? memoryState.items.length : 0,
+    warningCount: Array.isArray(memoryState?.warnings) ? memoryState.warnings.length : 0,
+    scopes: ['PROJECT', 'SYSTEM'],
+  }
+}
+
+function inspectRuntime(memoryState) {
+  const memory = publicMemoryStatus(memoryState)
   return {
     api: API_NAME,
     version: API_VERSION,
@@ -229,7 +323,8 @@ function inspectRuntime() {
     maximumSteps: HARD_MAX_STEPS,
     supportedReasoningEfforts: Array.from(ALLOWED_EFFORTS),
     writeActionsRequireApproval: true,
-    persistentOracleMemoryConnected: false,
+    persistentOracleMemoryConnected: memory.connected,
+    oracleMemory: memory,
     tools: TOOL_DEFINITIONS.map((tool) => tool.name),
   }
 }
@@ -248,11 +343,13 @@ function proposeAction(args) {
   }
 }
 
-const TOOL_HANDLERS = {
-  search_project_knowledge: searchProjectKnowledge,
-  calculate,
-  inspect_runtime: inspectRuntime,
-  propose_action: proposeAction,
+function createToolHandlers(memoryState) {
+  return {
+    search_project_knowledge: (args) => searchProjectKnowledge(args, memoryState),
+    calculate,
+    inspect_runtime: () => inspectRuntime(memoryState),
+    propose_action: proposeAction,
+  }
 }
 
 function parseToolArguments(raw) {
@@ -292,6 +389,57 @@ function summarizeUsage(usage) {
     reasoningTokens: 0,
     totalTokens: 0,
   })
+}
+
+async function loadMemoryStateSafe() {
+  try {
+    return await loadActiveAgentMemories({ maxResultsPerScope: 10 })
+  } catch {
+    const configuration = getMemoryConfigurationStatus()
+    return {
+      configured: configuration.configured,
+      connected: false,
+      items: [],
+      warnings: ['Memory API no disponible.'],
+    }
+  }
+}
+
+async function checkMemoryHealth() {
+  const configuration = getMemoryConfigurationStatus()
+  if (!configuration.configured) {
+    return {
+      configured: false,
+      connected: false,
+      loadedItems: 0,
+      warningCount: 0,
+      scopes: ['PROJECT', 'SYSTEM'],
+      memoryCount: null,
+    }
+  }
+
+  try {
+    const health = await memoryHealth()
+    const connected = health?.ok === true || health?.ok === 'true'
+    const memoryCount = Number(health?.memoryCount)
+    return {
+      configured: true,
+      connected,
+      loadedItems: 0,
+      warningCount: connected ? 0 : 1,
+      scopes: ['PROJECT', 'SYSTEM'],
+      memoryCount: Number.isFinite(memoryCount) ? memoryCount : null,
+    }
+  } catch {
+    return {
+      configured: true,
+      connected: false,
+      loadedItems: 0,
+      warningCount: 1,
+      scopes: ['PROJECT', 'SYSTEM'],
+      memoryCount: null,
+    }
+  }
 }
 
 async function callModel({ gateway, input, reasoningEffort, tools = TOOL_DEFINITIONS }) {
@@ -346,10 +494,11 @@ async function callModel({ gateway, input, reasoningEffort, tools = TOOL_DEFINIT
   }
 }
 
-async function runAgent({ gateway, messages, reasoningEffort, maxSteps }) {
+async function runAgent({ gateway, messages, reasoningEffort, maxSteps, memoryState }) {
   const input = messages.map(({ role, content }) => ({ role, content }))
   const trace = []
   const usage = []
+  const toolHandlers = createToolHandlers(memoryState)
   let approvalRequired = null
   let modelName = DEFAULT_MODEL
 
@@ -384,13 +533,11 @@ async function runAgent({ gateway, messages, reasoningEffort, maxSteps }) {
       }
     }
 
-    // Responses API requiere conservar los elementos de salida, incluidos los
-    // elementos de razonamiento, antes de agregar los resultados de funciones.
     input.push(...result.output)
 
     for (const toolCall of toolCalls) {
       const toolName = toolCall.name
-      const handler = TOOL_HANDLERS[toolName]
+      const handler = toolHandlers[toolName]
       let output
 
       try {
@@ -443,6 +590,7 @@ export default async function handler(request) {
   const gateway = resolveGateway()
 
   if (request.method === 'GET') {
+    const oracleMemory = await checkMemoryHealth()
     return json({
       ok: Boolean(gateway),
       api: { name: API_NAME, version: API_VERSION, endpoint: '/api/agent' },
@@ -451,11 +599,12 @@ export default async function handler(request) {
       providerApi: 'responses',
       model: DEFAULT_MODEL,
       credentialSource: gateway?.source || null,
-      oracleMemoryConnected: false,
+      oracleMemoryConnected: oracleMemory.connected,
+      oracleMemory,
       supportedReasoningEfforts: Array.from(ALLOWED_EFFORTS),
       tools: TOOL_DEFINITIONS.map((tool) => tool.name),
       message: gateway
-        ? 'NOXAS Agent v1.1 está disponible con razonamiento y herramientas mediante Responses API.'
+        ? 'NOXAS Agent v1.2 está disponible con memoria Oracle opcional, razonamiento y herramientas mediante Responses API.'
         : 'No hay credenciales configuradas para el proveedor de IA.',
     }, gateway ? 200 : 503)
   }
@@ -493,7 +642,9 @@ export default async function handler(request) {
       ? body.reasoning_effort
       : 'medium'
 
-    const result = await runAgent({ gateway, messages, reasoningEffort, maxSteps })
+    const memoryState = await loadMemoryStateSafe()
+    const result = await runAgent({ gateway, messages, reasoningEffort, maxSteps, memoryState })
+    const oracleMemory = publicMemoryStatus(memoryState)
 
     return json({
       api: { name: API_NAME, version: API_VERSION, endpoint: '/api/agent' },
@@ -508,6 +659,8 @@ export default async function handler(request) {
       usage: result.usage,
       usageSummary: result.usageSummary,
       credentialSource: gateway.source,
+      oracleMemoryConnected: oracleMemory.connected,
+      oracleMemory,
     })
   } catch (error) {
     const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError'
