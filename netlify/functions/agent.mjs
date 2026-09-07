@@ -524,6 +524,7 @@ async function runAgent({ gateway, messages, reasoningEffort, maxSteps, memorySt
           : 'El agente finalizó sin contenido.')
       }
       return {
+        status: 'COMPLETED',
         content: result.content,
         trace,
         usage,
@@ -539,24 +540,48 @@ async function runAgent({ gateway, messages, reasoningEffort, maxSteps, memorySt
       const toolName = toolCall.name
       const handler = toolHandlers[toolName]
       let output
-
-      try {
-        if (!handler) throw new Error(`Herramienta no permitida: ${toolName}`)
+      try {           if (!handler) throw new Error(`Herramienta no permitida: ${toolName}`)
         const args = parseToolArguments(toolCall.arguments)
         output = await handler(args)
-        if (toolName === 'propose_action') approvalRequired = output.proposal
       } catch (error) {
         output = {
           error: error instanceof Error ? error.message : 'Falló la herramienta.',
         }
       }
 
-      trace.push({ step, type: 'TOOL_RESULT', tool: toolName, ok: !output?.error })
+      trace.push({
+        step,
+        type: 'TOOL_RESULT',
+        tool: toolName,
+        ok: !output?.error,
+      })
+
       input.push({
         type: 'function_call_output',
         call_id: toolCall.call_id,
         output: JSON.stringify(output),
       })
+
+             if (toolName === 'propose_action' && !output?.error) {
+        approvalRequired = output.proposal
+
+        trace.push({
+          step,
+          type: 'WAITING_APPROVAL',
+          tool: toolName,
+          ok: true,
+        })
+
+        return {
+          status: 'WAITING_APPROVAL',
+          content: 'La acción propuesta requiere aprobación humana antes de continuar.',
+          trace,
+          usage,
+          usageSummary: summarizeUsage(usage),
+          modelName,
+          approvalRequired,
+        }
+      }
     }
   }
 
@@ -577,6 +602,7 @@ async function runAgent({ gateway, messages, reasoningEffort, maxSteps, memorySt
     || 'El agente alcanzó el límite de pasos sin producir una conclusión.'
 
   return {
+    status: 'COMPLETED',
     content,
     trace,
     usage,
@@ -585,7 +611,6 @@ async function runAgent({ gateway, messages, reasoningEffort, maxSteps, memorySt
     approvalRequired,
   }
 }
-
 export default async function handler(request) {
   const gateway = resolveGateway()
 
@@ -650,6 +675,7 @@ export default async function handler(request) {
       api: { name: API_NAME, version: API_VERSION, endpoint: '/api/agent' },
       assistant: 'NOXAS',
       mode: 'SUPERVISED',
+      status: result.status,
       providerApi: 'responses',
       reasoningEffort,
       choices: [{ message: { role: 'assistant', content: result.content } }],
