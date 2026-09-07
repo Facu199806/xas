@@ -233,3 +233,81 @@ test('si Memory API falla el agente conserva PROJECT_KNOWLEDGE local como fallba
   assert.ok(observedToolOutput.matches.some((item) => item.source === 'local'))
   assert.equal(observedToolOutput.memory.connected, false)
 })
+// Verifica que propose_action detenga el agente sin una segunda llamada al modelo.
+test('propose_action detiene el agente inmediatamente en WAITING_APPROVAL', async () => {
+  let providerCalls = 0
+
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input))
+
+    if (url.pathname.endsWith('/responses')) {
+      providerCalls += 1
+
+      if (providerCalls > 1) {
+        throw new Error('El agente no debe volver a llamar al modelo después de propose_action.')
+      }
+
+      return jsonResponse(200, {
+        id: 'resp-approval',
+        status: 'completed',
+        model: 'test-model',
+        output: [{
+          type: 'function_call',
+          name: 'propose_action',
+          call_id: 'call-approval',
+          arguments: JSON.stringify({
+            action_type: 'CODE_CHANGE',
+            description: 'Modificar configuración del agente.',
+            risk: 'MEDIUM',
+            reversible: true,
+            preview: 'Aplicar cambio controlado en agent.mjs.',
+          }),
+        }],
+        usage: {
+          input_tokens: 12,
+          output_tokens: 6,
+          total_tokens: 18,
+        },
+      })
+    }
+
+    throw new Error(`Request inesperado: ${url}`)
+  }
+
+  const response = await handler(
+    postRequest('Aplicá un cambio en el agente.'),
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.equal(body.status, 'WAITING_APPROVAL')
+  assert.equal(providerCalls, 1)
+
+  assert.deepEqual(body.approvalRequired, {
+    actionType: 'CODE_CHANGE',
+    description: 'Modificar configuración del agente.',
+    risk: 'MEDIUM',
+    reversible: true,
+    preview: 'Aplicar cambio controlado en agent.mjs.',
+  })
+
+  assert.equal(
+    body.choices[0].message.content,
+    'La acción propuesta requiere aprobación humana antes de continuar.',
+  )
+
+  assert.ok(
+    body.trace.some((item) => (
+      item.type === 'TOOL_RESULT'
+      && item.tool === 'propose_action'
+      && item.ok === true
+    )),
+  )
+
+  assert.ok(
+    body.trace.some((item) => (
+      item.type === 'WAITING_APPROVAL'
+      && item.tool === 'propose_action'
+    )),
+  )
+})
